@@ -1,0 +1,12 @@
+{{ {
+  'version': 1,
+  'user_uid': podman_log_config_uid | int,
+  'component': podman_log_config_component,
+  'directory': podman_log_config_directory,
+  'container': podman_log_config_container,
+  'graphroot': podman_log_config_graphroot,
+  'runtime_root': podman_log_config_runtime_root,
+  'conmon': podman_log_config_conmon,
+  'podman': podman_log_config_podman,
+  'operational': podman_log_config_operational
+} | to_nice_json }}

@@ -1,0 +1,24 @@
+---
+podman_log_config_component: ""
+podman_log_config_container: ""
+podman_log_config_user: ""
+podman_log_config_uid: 0
+podman_log_config_group: "{{ podman_log_config_user }}"
+podman_log_config_home: ""
+podman_log_config_graphroot: ""
+podman_log_config_runtime_root: "/run/user/{{ podman_log_config_uid }}"
+podman_log_config_directory: ""
+podman_log_config_operational: false
+podman_log_config_conmon: /usr/bin/conmon
+podman_log_config_podman: /usr/bin/podman
+podman_log_config_python: /usr/bin/python3
+podman_log_config_helper_directory: /usr/local/libexec/podman-component-logs
+podman_log_config_conmon_wrapper: /usr/local/libexec/podman-component-conmon
+podman_log_config_config_directory: /etc/podman-component-logs
+podman_log_config_unit_directory: /etc/systemd/system
+podman_log_config_manage_service: true
+podman_log_config_install_owner: root
+podman_log_config_install_group: root
+podman_log_config_unit: "podman-component-log-{{ podman_log_config_component }}"
+podman_log_config_config: >-
+  {{ podman_log_config_config_directory }}/{{ podman_log_config_component }}.json

@@ -1,0 +1,11 @@
+[Unit]
+Description=Collect bounded component logs for {{ podman_log_config_component }}
+
+[Timer]
+OnCalendar=*-*-* *:*:00,30
+Persistent=true
+AccuracySec=1s
+Unit={{ podman_log_config_unit }}.service
+
+[Install]
+WantedBy=timers.target

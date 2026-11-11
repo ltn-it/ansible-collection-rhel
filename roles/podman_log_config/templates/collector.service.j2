@@ -1,0 +1,23 @@
+[Unit]
+Description=Bounded component log collection for {{ podman_log_config_component }}
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User={{ podman_log_config_user }}
+Group={{ podman_log_config_group }}
+Environment=HOME={{ podman_log_config_home }}
+Environment=PATH=/usr/bin:/bin
+Environment=XDG_RUNTIME_DIR={{ podman_log_config_runtime_root }}
+WorkingDirectory=/
+ExecStart={{ podman_log_config_python }} -B {{ podman_log_config_helper_directory }}/main.py --config {{ podman_log_config_config }} --collect
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths={{ podman_log_config_directory }} {{ podman_log_config_graphroot }} {{ podman_log_config_runtime_root }}
+KillMode=control-group
+TimeoutStartSec=60
+StandardOutput=journal
+StandardError=journal

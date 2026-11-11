@@ -1,0 +1,25 @@
+---
+- name: Install real component log files in an isolated controller fixture
+  hosts: all
+  gather_facts: false
+  vars:
+    podman_log_config_fixture: "{{ lookup('env', 'HOME') }}/component-log-fixture"
+  roles:
+    - role: lit.rhel.podman_log_config
+      vars:
+        podman_log_config_component: example-database
+        podman_log_config_container: example-database
+        podman_log_config_user: logtest
+        podman_log_config_group: logtest
+        podman_log_config_uid: "{{ lookup('pipe', 'id -u') | int }}"
+        podman_log_config_home: "{{ lookup('env', 'HOME') }}"
+        podman_log_config_graphroot: "{{ podman_log_config_fixture }}/graphroot"
+        podman_log_config_directory: "{{ podman_log_config_fixture }}/data"
+        podman_log_config_operational: true
+        podman_log_config_helper_directory: "{{ podman_log_config_fixture }}/libexec/component-logs"
+        podman_log_config_conmon_wrapper: "{{ podman_log_config_fixture }}/libexec/conmon-wrapper"
+        podman_log_config_config_directory: "{{ podman_log_config_fixture }}/config"
+        podman_log_config_unit_directory: "{{ podman_log_config_fixture }}/units"
+        podman_log_config_manage_service: false
+        podman_log_config_install_owner: "{{ lookup('pipe', 'id -u') }}"
+        podman_log_config_install_group: "{{ lookup('pipe', 'id -g') }}"

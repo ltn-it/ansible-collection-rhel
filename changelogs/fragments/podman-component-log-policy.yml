@@ -1,0 +1,6 @@
+---
+minor_changes:
+  - >-
+    podman_log_config - add experimental rootless component log configuration,
+    native conmon rotation wrapper, shared compressed archive budget and bounded
+    operational command capture. Native runtime acceptance remains required.

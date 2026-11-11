@@ -1,0 +1,60 @@
+---
+- name: Verify installed policy and real isolated file/process behavior
+  hosts: all
+  gather_facts: false
+  vars:
+    podman_log_config_fixture: "{{ lookup('env', 'HOME') }}/component-log-fixture"
+  tasks:
+    - name: Validate installed instance configuration
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -B
+          - "{{ podman_log_config_fixture }}/libexec/component-logs/main.py"
+          - --config
+          - "{{ podman_log_config_fixture }}/config/example-database.json"
+          - --validate
+      register: podman_log_config_validation
+      changed_when: false
+
+    - name: Require actual installed configuration validation
+      ansible.builtin.assert:
+        that:
+          - podman_log_config_validation.stdout == 'COMPONENT_LOG_CONFIG_VALID'
+
+    - name: Run full-size filesystem and operational child tests against installed helpers
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -B
+          - -m
+          - unittest
+          - discover
+          - -v
+          - -s
+          - /workspace/tests/unit/podman_log_config
+      environment:
+        PYTHONPATH: "{{ podman_log_config_fixture }}/libexec/component-logs"
+      register: podman_log_config_tests
+      changed_when: false
+
+    - name: Reject malformed identifiers through the actual role prechecks
+      block:
+        - name: Try an invalid component identifier
+          ansible.builtin.include_role:
+            name: lit.rhel.podman_log_config
+            tasks_from: assert.yml
+          vars:
+            podman_log_config_component: "bad identifier"
+            podman_log_config_container: example-database
+            podman_log_config_user: logtest
+            podman_log_config_group: logtest
+            podman_log_config_uid: 12000
+        - name: Fail if invalid input was admitted
+          ansible.builtin.fail:
+            msg: Invalid component identifier was admitted.
+      rescue:
+        - name: Require interface rejection rather than any later failure
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Validate component log policy interface'
