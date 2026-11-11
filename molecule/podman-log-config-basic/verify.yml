@@ -5,6 +5,27 @@
   vars:
     podman_log_config_fixture: "{{ lookup('env', 'HOME') }}/component-log-fixture"
   tasks:
+    - name: Read the installed native policy without starting a service
+      ansible.builtin.slurp:
+        src: "{{ lookup('env', 'HOME') }}/.config/containers/systemd/example.kube.d/70-component-logs.conf"
+      register: podman_log_config_native_policy
+
+    - name: Read the preserved native source
+      ansible.builtin.slurp:
+        src: "{{ lookup('env', 'HOME') }}/.config/containers/systemd/example.kube"
+      register: podman_log_config_preserved_source
+
+    - name: Require the explicit native policy and unchanged base source
+      ansible.builtin.assert:
+        that:
+          - "'[Kube]' in (podman_log_config_native_policy.content | b64decode)"
+          - "'LogDriver=k8s-file' in (podman_log_config_native_policy.content | b64decode)"
+          - "'PodmanArgs=--log-opt=max-size=104857600' in (podman_log_config_native_policy.content | b64decode)"
+          - >-
+            ('GlobalArgs=--conmon=' ~ podman_log_config_fixture ~ '/libexec/conmon-wrapper')
+            in (podman_log_config_native_policy.content | b64decode)
+          - "(podman_log_config_preserved_source.content | b64decode) == '[Kube]\nYaml=/srv/example/pod.yml\n'"
+
     - name: Validate installed instance configuration
       ansible.builtin.command:
         argv:

@@ -3,4 +3,5 @@ minor_changes:
   - >-
     podman_log_config - add experimental rootless component log configuration,
     native conmon rotation wrapper, shared compressed archive budget and bounded
-    operational command capture. Native runtime acceptance remains required.
+    operational command capture, plus explicitly bound rootless Quadlet log-policy
+    drop-ins and changed-only service reconciliation. Native runtime acceptance remains required.

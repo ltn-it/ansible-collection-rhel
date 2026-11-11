@@ -92,6 +92,10 @@
     loop_var: podman_log_config_unit_type
   register: podman_log_config_units
 
+- name: Configure an explicitly selected existing native log writer
+  ansible.builtin.include_tasks: quadlet.yml
+  when: podman_log_config_quadlet_path | length > 0
+
 - name: Reload systemd after changed collector units
   ansible.builtin.systemd_service:
     daemon_reload: true

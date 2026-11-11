@@ -14,7 +14,8 @@ reserved log bytes per component. No minimum history is promised.
   user. Native log files and the archive directory must share one filesystem.
 - The consumer must configure `k8s-file`, `--log-opt=max-size=104857600` and select
   the installed conmon wrapper for its persistent Podman execution path. Existing
-  container services are not implicitly replaced or restarted by this role.
+  services can be explicitly selected through `podman_log_config_quadlet_path`.
+  Otherwise their configuration remains the consumer's responsibility.
 - Application control must admit the exact reviewed helper/module/wrapper bytes
   through its existing controlled process. This role neither disables protection
   nor automatically adds trust entries.
@@ -37,6 +38,23 @@ backup directory. Configurations are instance-specific; helper code is shared.
 running every thirty seconds as that user. Setting it to false installs the same
 files without accessing the system service manager; this is intended for isolated
 installation checks and is not evidence of an active logging policy.
+
+Set `podman_log_config_quadlet_path` to an existing rootless `.kube` or `.container`
+file to install its native log-policy drop-in. Its generated service is derived
+from the filename; set `podman_log_config_quadlet_service` only when the source
+defines a different service name. Before a real change, the existing service's
+`SourcePath` must match that exact file. A changed drop-in reloads the user manager
+and restarts only the selected service; an unchanged repeat does neither. No base
+manifest or unrelated unit is replaced. The log policy is identical for components
+sharing one Quadlet source. Rootful units and implicit service discovery are not
+supported by this interface.
+
+Before the first real native activation, install/review/admit the exact helper and
+wrapper bytes with service management disabled. Then perform the separately
+authorized native activation with that existing trust in place. The consumer
+must verify a suitable backup, idle backup/restore operations and application
+readiness/rollback for its actual topology. This role does not infer such guards
+from a successful metadata or controller check.
 
 The native wrapper explicitly keeps two native archives. In conmon 2.2.1 even a
 one-archive setting shifts `.1` to `.2`; the budget must reserve both. Together

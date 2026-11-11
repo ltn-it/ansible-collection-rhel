@@ -9,6 +9,7 @@
       - (podman_log_config_uid | string) is match('^[1-9][0-9]*$')
       - podman_log_config_operational is boolean
       - podman_log_config_manage_service is boolean
+      - podman_log_config_quadlet_path is string
       - podman_log_config_runtime_root == '/run/user/' ~ (podman_log_config_uid | string)
     quiet: true
 
@@ -37,3 +38,18 @@
     - "{{ podman_log_config_unit_directory }}"
   loop_control:
     loop_var: podman_log_config_path
+
+- name: Validate an explicitly selected rootless Quadlet source
+  ansible.builtin.assert:
+    that:
+      - podman_log_config_quadlet_path is match('^/[A-Za-z0-9_./-]+\.(kube|container)$')
+      - "'..' not in podman_log_config_quadlet_path.split('/')"
+      - "'.' not in podman_log_config_quadlet_path.split('/')"
+      - "'//' not in podman_log_config_quadlet_path"
+      - >-
+        podman_log_config_quadlet_path.startswith(podman_log_config_home + '/.config/containers/systemd/') or
+        podman_log_config_quadlet_path.startswith('/etc/containers/systemd/users/' ~
+          (podman_log_config_uid | string) ~ '/')
+      - podman_log_config_quadlet_service is match('^[A-Za-z0-9][A-Za-z0-9_.-]*\.service$')
+    quiet: true
+  when: podman_log_config_quadlet_path | length > 0
