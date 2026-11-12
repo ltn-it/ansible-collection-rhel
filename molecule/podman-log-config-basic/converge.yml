@@ -37,6 +37,7 @@
         podman_log_config_config_directory: "{{ podman_log_config_fixture }}/config"
         podman_log_config_unit_directory: "{{ podman_log_config_fixture }}/units"
         podman_log_config_manage_service: false
+        podman_log_config_timer_enabled: false
         podman_log_config_quadlet_path: "{{ lookup('env', 'HOME') }}/.config/containers/systemd/example.kube"
         podman_log_config_install_owner: "{{ lookup('pipe', 'id -u') }}"
         podman_log_config_install_group: "{{ lookup('pipe', 'id -g') }}"

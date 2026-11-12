@@ -79,3 +79,25 @@
           ansible.builtin.assert:
             that:
               - ansible_failed_task.name == 'Validate component log policy interface'
+
+    - name: Reject a string timer flag before touching installed files
+      block:
+        - name: Try a non-boolean timer flag
+          ansible.builtin.include_role:
+            name: lit.rhel.podman_log_config
+            tasks_from: assert.yml
+          vars:
+            podman_log_config_component: example-database
+            podman_log_config_container: example-database
+            podman_log_config_user: logtest
+            podman_log_config_group: logtest
+            podman_log_config_uid: 12000
+            podman_log_config_timer_enabled: "false"
+        - name: Fail if the string timer flag was admitted
+          ansible.builtin.fail:
+            msg: A non-boolean timer flag was admitted.
+      rescue:
+        - name: Require timer input rejection in the interface prechecks
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Validate component log policy interface'

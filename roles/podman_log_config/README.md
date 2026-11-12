@@ -39,6 +39,19 @@ running every thirty seconds as that user. Setting it to false installs the same
 files without accessing the system service manager; this is intended for isolated
 installation checks and is not evidence of an active logging policy.
 
+`podman_log_config_timer_enabled` defaults to true. With service management enabled,
+setting it to false disables/stops this component's timer and stops its in-flight
+collector before reconciling an explicitly selected native writer. Files and
+private directories still use the actual runtime ownership. This supports a staged
+consumer: prepare files with no native source selected and collection disabled,
+preserve the old logs, reconcile the selected native source while collection stays
+disabled, verify the completed archive handoff, then enable collection. Enabling
+the timer with an unchanged native drop-in does not restart the application.
+An interrupted collector can leave recoverable archive work; the consumer must
+handle that state before pinning another native log. This switch does not itself
+preserve logs, coordinate backup/restore jobs or verify application readiness.
+It has no service-manager effect when `podman_log_config_manage_service` is false.
+
 Set `podman_log_config_quadlet_path` to an existing rootless `.kube` or `.container`
 file to install its native log-policy drop-in. Its generated service is derived
 from the filename; set `podman_log_config_quadlet_service` only when the source

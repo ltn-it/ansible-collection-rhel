@@ -4,4 +4,7 @@ minor_changes:
     podman_log_config - add experimental rootless component log configuration,
     native conmon rotation wrapper, shared compressed archive budget and bounded
     operational command capture, plus explicitly bound rootless Quadlet log-policy
-    drop-ins and changed-only service reconciliation. Native runtime acceptance remains required.
+    drop-ins and changed-only service reconciliation. Add an explicit timer gate
+    that quiesces the selected collector before native writer changes and allows
+    activation after the consumer verifies its legacy-log handoff. Native runtime
+    acceptance remains required.

@@ -17,6 +17,8 @@ podman_log_config_conmon_wrapper: /usr/local/libexec/podman-component-conmon
 podman_log_config_config_directory: /etc/podman-component-logs
 podman_log_config_unit_directory: /etc/systemd/system
 podman_log_config_manage_service: true
+# Keep collection quiescent while the consumer preserves old native logs.
+podman_log_config_timer_enabled: true
 # Optional existing rootless native source. Empty installs the collector only.
 podman_log_config_quadlet_path: ""
 podman_log_config_quadlet_service: >-

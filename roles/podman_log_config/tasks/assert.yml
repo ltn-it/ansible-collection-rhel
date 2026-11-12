@@ -9,6 +9,7 @@
       - (podman_log_config_uid | string) is match('^[1-9][0-9]*$')
       - podman_log_config_operational is boolean
       - podman_log_config_manage_service is boolean
+      - podman_log_config_timer_enabled is boolean
       - podman_log_config_quadlet_path is string
       - podman_log_config_runtime_root == '/run/user/' ~ (podman_log_config_uid | string)
     quiet: true

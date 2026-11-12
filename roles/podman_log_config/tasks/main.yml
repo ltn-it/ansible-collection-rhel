@@ -92,10 +92,6 @@
     loop_var: podman_log_config_unit_type
   register: podman_log_config_units
 
-- name: Configure an explicitly selected existing native log writer
-  ansible.builtin.include_tasks: quadlet.yml
-  when: podman_log_config_quadlet_path | length > 0
-
 - name: Reload systemd after changed collector units
   ansible.builtin.systemd_service:
     daemon_reload: true
@@ -103,9 +99,32 @@
     - podman_log_config_manage_service
     - podman_log_config_units.changed
 
+- name: Disable the component timer before native writer changes
+  ansible.builtin.systemd_service:
+    name: "{{ podman_log_config_unit }}.timer"
+    enabled: false
+    state: stopped
+  when:
+    - podman_log_config_manage_service
+    - not podman_log_config_timer_enabled
+
+- name: Stop the selected in-flight collector before native writer changes
+  ansible.builtin.systemd_service:
+    name: "{{ podman_log_config_unit }}.service"
+    state: stopped
+  when:
+    - podman_log_config_manage_service
+    - not podman_log_config_timer_enabled
+
+- name: Configure an explicitly selected existing native log writer
+  ansible.builtin.include_tasks: quadlet.yml
+  when: podman_log_config_quadlet_path | length > 0
+
 - name: Enable the component collector timer
   ansible.builtin.systemd_service:
     name: "{{ podman_log_config_unit }}.timer"
     enabled: true
     state: started
-  when: podman_log_config_manage_service
+  when:
+    - podman_log_config_manage_service
+    - podman_log_config_timer_enabled
