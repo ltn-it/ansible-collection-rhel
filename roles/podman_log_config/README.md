@@ -57,8 +57,17 @@ file to install its native log-policy drop-in. Its generated service is derived
 from the filename; set `podman_log_config_quadlet_service` only when the source
 defines a different service name. Before a real change, the existing service's
 `SourcePath` must match that exact file. A changed drop-in reloads the user manager
-and restarts only the selected service; an unchanged repeat does neither. No base
-manifest or unrelated unit is replaced. The log policy is identical for components
+and restarts only the selected service. Real runs also load the installed helper
+under the runtime UID with NoNewPrivileges and inspect the running native writer's
+identity, log path, size and rotation arguments. This inspection does not collect
+or rotate logs. If an earlier restart failed after writing the drop-in, an
+unchanged retry reconciles the still-unapplied runtime policy. An already active
+policy avoids a duplicate restart after a lost acknowledgement. The final runtime
+inspection must pass before the role can enable collection; a zero service-manager
+exit alone is insufficient. An inspection failure outside the recognized inactive
+policy/running-state cases stops before a service restart. Check mode does not
+claim runtime-policy acceptance.
+No base manifest or unrelated unit is replaced. The log policy is identical for components
 sharing one Quadlet source. Rootful units and implicit service discovery are not
 supported by this interface.
 

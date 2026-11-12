@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - >-
+    podman_log_config - inspect actual native log-policy state before and after
+    service reconciliation so unchanged retries recover a failed restart without
+    repeating an already completed restart or accepting unapplied native limits.
