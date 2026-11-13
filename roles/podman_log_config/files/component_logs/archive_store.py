@@ -60,7 +60,7 @@ def closed_inode(info, writer_pids):
 class ArchiveStore:
     def __init__(self, directory, native_archives, active_files,
                  max_file=100 * 1024**2, max_total=1024**3,
-                 max_archives=7, max_age=14 * 86400):
+                 max_archives=7, max_age=14 * 86400, inode_checker=None):
         self.root = Path(directory)
         info = self.root.lstat()
         if (self.root.resolve() != self.root or not stat.S_ISDIR(info.st_mode)
@@ -82,6 +82,17 @@ class ArchiveStore:
             raise ValueError("unsafe storage budget")
         self.max_file = max_file
         self.max_age = max_age
+        if inode_checker is not None and not callable(inode_checker):
+            raise ValueError("inode checker must be callable")
+        self.inode_checker = inode_checker
+
+    def closed_inode(self, info, writer_pids):
+        """Preserve the selected visibility boundary for every archive consumer."""
+        result = (closed_inode(info, writer_pids) if self.inode_checker is None
+                  else self.inode_checker(info, writer_pids))
+        if type(result) is not bool:
+            raise ValueError("inode checker must return a boolean")
+        return result
 
     @contextlib.contextmanager
     def locked(self):
@@ -153,7 +164,7 @@ class ArchiveStore:
         info = regular(raw)
         if info.st_size > self.max_file:
             raise ValueError("claimed input exceeds file ceiling")
-        if not closed_inode(info, writer_pids):
+        if not self.closed_inode(info, writer_pids):
             return None
         fd = os.open(raw, os.O_RDONLY | os.O_NOFOLLOW)
         try:

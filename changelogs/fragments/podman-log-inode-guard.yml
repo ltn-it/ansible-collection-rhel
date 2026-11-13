@@ -1,0 +1,6 @@
+---
+minor_changes:
+  - >-
+    podman_log_config - add an opt-in bounded Root metadata reader for archive
+    closure checks when the runtime user cannot inspect all writer descriptors;
+    collectors and captured commands retain their unprivileged identity.

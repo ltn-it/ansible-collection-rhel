@@ -34,6 +34,36 @@ Set `podman_log_config_operational: true` to allow captured operational output.
 Do not point the component directory at database storage, transaction logs or a
 backup directory. Configurations are instance-specific; helper code is shared.
 
+`podman_log_config_inode_guard_enabled` defaults to false. Enable it explicitly
+when the runtime user cannot inspect every writer's descriptors. A separate
+socket-activated Root helper then checks only the configured `archives/incoming.raw`
+inode. It accepts version/device/inode metadata from the configured runtime UID,
+never requested paths, PIDs, commands or log contents. The client requires the
+Root-owned socket and protected parent directories; both peers check Unix
+credentials. Unreadable metadata, changed identity, invalid input, time/count
+limits or a missing reader refuse archival; there is no silent fallback.
+The same selected checker is used by collection and operational capture.
+
+The Root service has only SYS_PTRACE and DAC_READ_SEARCH, NoNewPrivileges,
+read-only filesystem access and AF_UNIX; ptrace and process_vm syscalls are
+denied. These capabilities are not assigned to containers, collectors or backup
+commands. Native systemd/SELinux/application-control acceptance is mandatory;
+this role does not change or disable those controls or admit helper files.
+The scan is a bounded observation, not an atomic guarantee against later opens
+or descriptor transfers. Existing store locking and immutable-input checks remain.
+
+Stage this feature with `podman_log_config_timer_enabled: false` and
+`podman_log_config_inode_guard_socket_enabled: false` (the latter defaults false).
+Review/admit the exact changed helpers, then explicitly enable the reader socket
+and prove native UID-client/held-file/denial behavior before enabling collection.
+With service management disabled, only files are installed. Each component has
+its own Root config and socket; later role invocations do not overwrite another
+component's reader target. When disabling its socket, the selected Root service
+is also stopped. A disabled feature does not remove previously installed reader
+units; quiesce consumers and explicitly stop the selected socket before changing
+the feature or restoring previous helper/config bytes. Retain pending raw/log
+data and coordinate backup/restore locks; do not remove archives as rollback.
+
 `podman_log_config_manage_service: true` installs and enables a system timer
 running every thirty seconds as that user. Setting it to false installs the same
 files without accessing the system service manager; this is intended for isolated

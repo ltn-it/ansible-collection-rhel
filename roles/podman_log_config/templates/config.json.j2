@@ -9,4 +9,5 @@
   'conmon': podman_log_config_conmon,
   'podman': podman_log_config_podman,
   'operational': podman_log_config_operational
-} | to_nice_json }}
+} | combine({'inode_guard_socket': podman_log_config_inode_guard_socket}
+            if podman_log_config_inode_guard_enabled else {}) | to_nice_json }}

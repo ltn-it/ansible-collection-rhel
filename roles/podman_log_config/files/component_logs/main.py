@@ -35,7 +35,8 @@ def load_config(path):
     value = json.loads(path.read_text())
     required = {"version", "user_uid", "component", "directory", "container", "graphroot",
                 "runtime_root", "conmon", "podman", "operational"}
-    if not isinstance(value, dict) or set(value) != required or value["version"] != 1:
+    if (not isinstance(value, dict) or set(value) not in (required, required | {"inode_guard_socket"})
+            or value["version"] != 1):
         raise ValueError("invalid configuration schema")
     if type(value["user_uid"]) is not int or value["user_uid"] <= 0:
         raise ValueError("requires an unprivileged runtime user")
@@ -48,6 +49,10 @@ def load_config(path):
         canonical(value[field])
     if Path(value["runtime_root"]) != Path("/run/user") / str(value["user_uid"]):
         raise ValueError("runtime directory identity mismatch")
+    if "inode_guard_socket" in value:
+        if not isinstance(value["inode_guard_socket"], str) or len(value["inode_guard_socket"].encode()) > 107:
+            raise ValueError("invalid inode guard socket")
+        canonical(value["inode_guard_socket"])
     return value
 
 
@@ -82,12 +87,20 @@ class Component:
         if os.geteuid() != config["user_uid"]:
             raise ValueError("runtime identity mismatch")
         self.config = config
+        checker = None
+        self.writer_pids = owned_pids
+        if "inode_guard_socket" in config:
+            from inode_guard import check_remote
+            checker = lambda info, pids: check_remote(config["inode_guard_socket"], info)
+            # The required reader owns complete PID/credential selection.
+            self.writer_pids = lambda: ()
         self.root = canonical(config["directory"])
         info = self.root.stat()
         if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o700:
             raise ValueError("unsafe component directory")
         self.store = ArchiveStore(self.root / "archives", native_archives=2,
-                                  active_files=2 if config["operational"] else 1)
+                                  active_files=2 if config["operational"] else 1,
+                                  inode_checker=checker)
         self.state = self.root / "native-state.json"
 
     def inspect(self):
@@ -133,7 +146,7 @@ class Component:
         return model
 
     def recover(self):
-        self.store.compress(owned_pids())
+        self.store.compress(self.writer_pids())
         return not (self.store.root / RAW).exists()
 
     def collect_archives(self, model):
@@ -208,7 +221,7 @@ class Component:
             if self.config["operational"] and active.exists():
                 before = datetime.datetime.fromtimestamp(regular(active).st_mtime).astimezone().date()
                 if before != datetime.datetime.now().astimezone().date():
-                    BoundedFile(self.store, active, owned_pids).rollover()
+                    BoundedFile(self.store, active, self.writer_pids).rollover()
             self.store.prune()
             return True
 
@@ -234,7 +247,7 @@ def main():
         if not config["operational"] or not args.capture or not Path(args.capture[0]).is_absolute():
             raise ValueError("capture requires an explicit absolute command")
         component.inspect()
-        return capture(args.capture, BoundedFile(component.store, component.root / "operations.log", owned_pids))
+        return capture(args.capture, BoundedFile(component.store, component.root / "operations.log", component.writer_pids))
     except Exception:
         print("COMPONENT_LOG_OPERATION_FAILED", file=sys.stderr)
         return 1

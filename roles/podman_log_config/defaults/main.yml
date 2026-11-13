@@ -19,6 +19,12 @@ podman_log_config_unit_directory: /etc/systemd/system
 podman_log_config_manage_service: true
 # Keep collection quiescent while the consumer preserves old native logs.
 podman_log_config_timer_enabled: true
+# Explicit opt-in when runtime procfs visibility cannot cover all log writers.
+podman_log_config_inode_guard_enabled: false
+# Stage with false until exact helper bytes have been reviewed/admitted.
+podman_log_config_inode_guard_socket_enabled: false
+podman_log_config_inode_guard_unit: "podman-component-inode-guard-{{ podman_log_config_component }}"
+podman_log_config_inode_guard_socket: "/run/podman-component-inode-guard/{{ podman_log_config_component }}.sock"
 # Optional existing rootless native source. Empty installs the collector only.
 podman_log_config_quadlet_path: ""
 podman_log_config_quadlet_service: >-

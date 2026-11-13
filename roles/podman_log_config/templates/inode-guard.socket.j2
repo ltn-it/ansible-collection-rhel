@@ -1,0 +1,18 @@
+[Unit]
+Description=Component archive inode metadata request socket
+
+[Socket]
+ListenStream={{ podman_log_config_inode_guard_socket }}
+SocketUser=root
+SocketGroup={{ podman_log_config_group }}
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=yes
+Accept=no
+Service={{ podman_log_config_inode_guard_unit }}.service
+Backlog=8
+TriggerLimitIntervalSec=30
+TriggerLimitBurst=120
+
+[Install]
+WantedBy=sockets.target
