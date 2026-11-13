@@ -47,7 +47,8 @@ def runtime_uids(process):
 
 
 def scan_inode(uid, device, inode, *, proc='/proc', seconds=5,
-               max_processes=8192, max_tasks=4096, max_descriptors=65536):
+               max_processes=8192, max_tasks=4096, max_descriptors=65536,
+               readability_only=False):
     """Scan all threads of processes with any matching real/effective/save/fs UID.
 
     Anchored directory FDs prevent a recycled numeric PID from redirecting an
@@ -55,7 +56,8 @@ def scan_inode(uid, device, inode, *, proc='/proc', seconds=5,
     unreadable metadata, changed credentials and exhausted bounds refuse.
     """
     if (type(uid) is not int or uid <= 0 or type(device) is not int
-            or device < 0 or type(inode) is not int or inode <= 0):
+            or device < 0 or type(inode) is not int or inode <= 0
+            or type(readability_only) is not bool):
         raise ScanRefused('input_schema')
     deadline = time.monotonic() + seconds
     counts = dict(processes=0, selected=0, tasks=0, descriptors=0)
@@ -99,7 +101,8 @@ def scan_inode(uid, device, inode, *, proc='/proc', seconds=5,
                                                                 info = os.stat(handle.name, dir_fd=handles)
                                                             except FileNotFoundError:
                                                                 continue
-                                                            if (info.st_dev, info.st_ino) == (device, inode):
+                                                            if (not readability_only and
+                                                                    (info.st_dev, info.st_ino) == (device, inode)):
                                                                 return False, counts
                                                 if uid not in runtime_uids(thread):
                                                     raise ScanRefused('credentials_changed')
@@ -213,6 +216,12 @@ def answer(connection, config):
         if os.geteuid() != 0 or credentials(connection)[1] != config['uid']:
             raise ScanRefused('peer_identity')
         request = receive(connection)
+        if (set(request) == {'version','probe'} and type(request['version']) is int
+                and request['version'] == 1 and request['probe'] is True):
+            readable, _ = scan_inode(config['uid'],0,1,readability_only=True)
+            response = dict(version=1,ok=True,readable=readable)
+            connection.sendall(json.dumps(response,separators=(',',':')).encode())
+            return
         if (set(request) != {'version','device','inode'}
                 or type(request['version']) is not int or request['version'] != 1
                 or type(request['device']) is not int or request['device'] < 0
@@ -241,7 +250,7 @@ def answer(connection, config):
     connection.sendall(json.dumps(response,separators=(',',':')).encode())
 
 
-def check_remote(path, info):
+def _request_remote(path, request, result_key):
     """Runtime-side required reader: missing/untrusted/malformed means refusal."""
     root_controlled_directory(str(Path(path).parent))
     before=Path(path).lstat()
@@ -255,15 +264,24 @@ def check_remote(path, info):
         after=Path(path).lstat()
         if (after.st_dev,after.st_ino) != (before.st_dev,before.st_ino):
             raise ScanRefused('server_identity')
-        request = dict(version=1,device=info.st_dev,inode=info.st_ino)
         connection.sendall(json.dumps(request,separators=(',',':')).encode())
         connection.shutdown(socket.SHUT_WR)
         response = receive(connection)
-    if (set(response) != {'version','ok','closed'}
+    if (set(response) != {'version','ok',result_key}
             or type(response['version']) is not int or response['version'] != 1
-            or response['ok'] is not True or type(response['closed']) is not bool):
+            or response['ok'] is not True or type(response[result_key]) is not bool):
         raise ScanRefused('reader_refused')
-    return response['closed']
+    return response[result_key]
+
+
+def check_remote(path, info):
+    """Check only the configured incoming inode, never a caller-supplied path."""
+    return _request_remote(path,dict(version=1,device=info.st_dev,inode=info.st_ino),'closed')
+
+
+def probe_remote(path):
+    """Readability observation only; creates no archive file or store lock."""
+    return _request_remote(path,dict(version=1,probe=True),'readable')
 
 
 def serve_activated(config_path):

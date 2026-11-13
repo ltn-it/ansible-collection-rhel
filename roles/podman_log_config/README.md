@@ -43,6 +43,9 @@ Root-owned socket and protected parent directories; both peers check Unix
 credentials. Unreadable metadata, changed identity, invalid input, time/count
 limits or a missing reader refuse archival; there is no silent fallback.
 The same selected checker is used by collection and operational capture.
+An authenticated readability probe also permits a strictly read-only preflight
+without an existing or synthetic incoming file. It scans only the configured
+runtime UID scope and returns a boolean, never counters, PID metadata or targets.
 
 The Root service has only SYS_PTRACE and DAC_READ_SEARCH, NoNewPrivileges,
 read-only filesystem access and AF_UNIX; ptrace and process_vm syscalls are
