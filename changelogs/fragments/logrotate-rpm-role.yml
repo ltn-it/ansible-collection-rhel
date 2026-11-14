@@ -2,3 +2,4 @@
 minor_changes:
   - logrotate - add an operating-system RPM role with validated explicit rules and the existing vendor timer.
   - logrotate - reject protected data/backup paths and document per-file retention and polling limits explicitly.
+  - logrotate - replace the unshipped experimental component-log helper role with the RPM-based role.

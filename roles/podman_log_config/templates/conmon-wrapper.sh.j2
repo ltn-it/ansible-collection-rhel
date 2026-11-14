@@ -1,4 +1,0 @@
-#!/bin/sh
-# Only callers selecting this wrapper receive the native component policy.
-# Two native archives are reserved explicitly, including conmon 2.2.1 behavior.
-exec {{ podman_log_config_conmon }} "$@" --log-rotate --log-max-files=2

@@ -6,6 +6,19 @@
   vars:
     logrotate_test_root: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/logrotate"
   tasks:
+    - name: Inspect the installed package for the retired helper role
+      ansible.builtin.stat:
+        path: >-
+          {{ lookup('ansible.builtin.env', 'ANSIBLE_COLLECTIONS_PATH').split(':')[0]
+             }}/ansible_collections/lit/rhel/roles/podman_log_config
+        follow: false
+      register: logrotate_test_retired_role
+
+    - name: Require the package to omit the retired helper role
+      ansible.builtin.assert:
+        that:
+          - not logrotate_test_retired_role.stat.exists
+
     - name: Read the rendered rule
       ansible.builtin.slurp:
         src: "{{ logrotate_test_root }}/application.conf"
