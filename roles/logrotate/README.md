@@ -7,7 +7,10 @@ metadata reader, conmon wrapper, or additional service.
 ## Requirements
 
 RHEL-family systems with systemd, configured RPM repositories and root privileges.
-The consumer owns log writer configuration, reopen behavior and SELinux labels.
+The consumer owns log writer configuration, reopen behavior and labels outside
+the optionally managed standard container-log namespace. That preparation requires
+a pre-existing non-root account and the Podman SELinux policy providing
+`container_log_t` when SELinux is active.
 All paths must be explicit absolute regular-file paths, without globs or symlinks.
 Declare data and backup trees in `logrotate_protected_directories`.
 
@@ -49,6 +52,18 @@ This role never forces rotation or creates/deletes application data or backups.
 Archive counts accept positive integers or their canonical decimal text form,
 so Ansible role-variable forwarding also works when native templating is disabled.
 Booleans, fractions, signs, leading zeros and values above 1000 are rejected.
+
+For a rootless container setup, `logrotate_prepare_container_files: true`
+prepares only paths under `/var/log/podman-components/<component>/<file>.log`.
+Supply the already existing non-root `logrotate_container_user` and primary
+`logrotate_container_group` explicitly. The protected root is owned by root;
+component directories are private to that account and newly created files use
+mode 0600. Existing content and timestamps are preserved. Foreign owners,
+non-private files/directories, links and paths outside the flat namespace are
+not repurposed. Other rotation sources, such as separately managed backup
+operation logs, are not created by this option. Active SELinux uses the standard
+persistent `container_log_t` mapping. No capture program or additional service
+is installed. Normal operating-system and account preparation remains required.
 
 ## Dependencies
 

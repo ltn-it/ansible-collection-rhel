@@ -3,10 +3,21 @@
   ansible.builtin.import_tasks: assert.yml
   tags: always
 
+- name: Prepare the explicitly selected standard container log destinations
+  ansible.builtin.import_tasks: prepare_container_files.yml
+  vars:
+    logrotate_container_paths: >-
+      {{ logrotate_paths | select('match', '^/var/log/podman-components/') | list }}
+  when:
+    - logrotate_prepare_container_files | bool
+    - logrotate_paths | select('match', '^/var/log/podman-components/') | list | length > 0
+
 - name: Inspect explicitly selected existing log files
   ansible.builtin.stat:
     path: "{{ logrotate_path }}"
     follow: false
+    get_checksum: false
+    get_mime: false
   loop: "{{ logrotate_paths }}"
   loop_control:
     loop_var: logrotate_path

@@ -13,3 +13,8 @@ logrotate_postrotate: ""
 # Empty preserves the vendor calendar. This is a check interval, not a size cap.
 logrotate_timer_calendar: ""
 logrotate_timer_enabled: true
+# Optional setup preparation for the standard native Podman log namespace.
+# This creates no service and does not capture logs.
+logrotate_prepare_container_files: false
+logrotate_container_user: ""
+logrotate_container_group: ""

@@ -22,6 +22,9 @@
       - logrotate_timer_calendar is string
       - logrotate_timer_calendar is match('^[A-Za-z0-9*,:/ .-]*$')
       - logrotate_timer_enabled is boolean
+      - logrotate_prepare_container_files is boolean
+      - logrotate_container_user is string
+      - logrotate_container_group is string
     quiet: true
 
 - name: Require explicit canonical log and protected directory paths
@@ -49,3 +52,12 @@
   loop: "{{ logrotate_paths | product(logrotate_protected_directories) | list }}"
   loop_control:
     loop_var: logrotate_pair
+
+- name: Require an explicit runtime account when preparing container log files
+  ansible.builtin.assert:
+    that:
+      - logrotate_container_user is match('^[a-z_][a-z0-9_-]*$')
+      - logrotate_container_group is match('^[a-z_][a-z0-9_-]*$')
+      - logrotate_container_user != 'root'
+    quiet: true
+  when: logrotate_prepare_container_files | bool
