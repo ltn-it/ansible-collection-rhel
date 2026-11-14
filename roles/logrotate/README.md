@@ -46,6 +46,10 @@ The role validates it with `systemd-analyze calendar`. An application rule is
 validated with the installed RPM's `logrotate --debug` before replacement.
 This role never forces rotation or creates/deletes application data or backups.
 
+Archive counts accept positive integers or their canonical decimal text form,
+so Ansible role-variable forwarding also works when native templating is disabled.
+Booleans, fractions, signs, leading zeros and values above 1000 are rejected.
+
 ## Dependencies
 
 No additional collection role dependency. Uses `ansible.builtin` modules only.

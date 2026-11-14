@@ -5,7 +5,7 @@
 {
     daily
     maxsize {{ logrotate_max_size }}
-    rotate {{ logrotate_archive_count }}
+    rotate {{ logrotate_archive_count | int }}
     maxage {{ logrotate_max_age_days }}
     compress
     nodelaycompress

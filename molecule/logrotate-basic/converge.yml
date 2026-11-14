@@ -21,6 +21,35 @@
         tasks_from: assert
         public: true
 
+    - name: Accept a canonical archive count transported as templated text
+      ansible.builtin.include_role:
+        name: lit.rhel.logrotate
+        tasks_from: assert
+      vars:
+        logrotate_archive_count: "7"
+
+    - name: Reject fractional archive counts instead of truncating them
+      block:
+        - name: Validate an intentionally invalid fractional archive count
+          ansible.builtin.include_role:
+            name: lit.rhel.logrotate
+            tasks_from: assert
+          vars:
+            logrotate_archive_count: "7.5"
+        - name: Record unexpected fractional count acceptance
+          ansible.builtin.set_fact:
+            logrotate_test_accepted_fraction: true
+      rescue:
+        - name: Record expected fractional count rejection
+          ansible.builtin.set_fact:
+            logrotate_test_rejected_fraction: true
+
+    - name: Require fail-closed fractional count handling
+      ansible.builtin.assert:
+        that:
+          - logrotate_test_rejected_fraction | default(false)
+          - not logrotate_test_accepted_fraction | default(false)
+
     - name: Create the private rendering fixture
       ansible.builtin.file:
         path: "{{ logrotate_test_root }}"

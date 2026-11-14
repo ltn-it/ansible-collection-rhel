@@ -13,7 +13,8 @@
       - logrotate_user is match('^[a-z_][a-z0-9_-]*$')
       - logrotate_group is match('^[a-z_][a-z0-9_-]*$')
       - logrotate_create_mode is string and logrotate_create_mode is match('^0[0-7]{3}$')
-      - logrotate_archive_count is integer and logrotate_archive_count > 0 and logrotate_archive_count <= 1000
+      - logrotate_archive_count | string is match('^[1-9][0-9]{0,3}$')
+      - logrotate_archive_count | int <= 1000
       - logrotate_max_age_days is integer and logrotate_max_age_days > 0
       - logrotate_max_size is string and logrotate_max_size is match('^[1-9][0-9]*[kMG]?$')
       - logrotate_copytruncate is boolean
