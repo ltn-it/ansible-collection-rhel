@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - >-
+    podman - manage rootless storage file-context mappings through community.general.sefcontext
+    and report restorecon changes only for actual relabels, avoiding repeated changes
+    on an already configured EL10 host.
