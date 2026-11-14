@@ -1,0 +1,57 @@
+---
+- name: Exercise packaged logrotate input checks and rendering without changing the controller OS
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    # A schema fixture only: this scenario does not install an RPM or run systemd.
+    ansible_facts:
+      os_family: RedHat
+    logrotate_test_root: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/logrotate"
+    logrotate_name: example
+    logrotate_paths: ["{{ logrotate_test_root }}/application.log"]
+    logrotate_protected_directories: ["{{ logrotate_test_root }}/backups"]
+    logrotate_test_role: >-
+      {{ lookup('ansible.builtin.env', 'ANSIBLE_COLLECTIONS_PATH').split(':')[0]
+         }}/ansible_collections/lit/rhel/roles/logrotate
+  tasks:
+    - name: Load packaged role defaults and validate the schema fixture
+      ansible.builtin.include_role:
+        name: lit.rhel.logrotate
+        tasks_from: assert
+        public: true
+
+    - name: Create the private rendering fixture
+      ansible.builtin.file:
+        path: "{{ logrotate_test_root }}"
+        state: directory
+        mode: "0700"
+
+    - name: Render the freshly installed package template
+      ansible.builtin.template:
+        src: "{{ logrotate_test_role }}/templates/application.conf.j2"
+        dest: "{{ logrotate_test_root }}/application.conf"
+        mode: "0600"
+
+    - name: Attempt to include a data backup as a rotation source
+      block:
+        - name: Validate an intentionally forbidden backup path
+          ansible.builtin.include_role:
+            name: lit.rhel.logrotate
+            tasks_from: assert
+          vars:
+            logrotate_paths: ["{{ logrotate_test_root }}/backups/database.sql"]
+
+        - name: Record unexpected acceptance
+          ansible.builtin.set_fact:
+            logrotate_test_accepted_backup: true
+      rescue:
+        - name: Record expected backup exclusion
+          ansible.builtin.set_fact:
+            logrotate_test_rejected_backup: true
+
+    - name: Require actual backup exclusion
+      ansible.builtin.assert:
+        that:
+          - logrotate_test_rejected_backup | default(false)
+          - not logrotate_test_accepted_backup | default(false)

@@ -1,0 +1,23 @@
+---
+- name: Verify the packaged controller fixture without claiming runtime rotation
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    logrotate_test_root: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/logrotate"
+  tasks:
+    - name: Read the rendered rule
+      ansible.builtin.slurp:
+        src: "{{ logrotate_test_root }}/application.conf"
+      register: logrotate_test_rendered
+
+    - name: Require the documented RPM directives and no helper entry point
+      ansible.builtin.assert:
+        that:
+          - "'daily' in (logrotate_test_rendered.content | b64decode)"
+          - "'maxsize 100M' in (logrotate_test_rendered.content | b64decode)"
+          - "'rotate 7' in (logrotate_test_rendered.content | b64decode)"
+          - "'maxage 14' in (logrotate_test_rendered.content | b64decode)"
+          - "'nodelaycompress' in (logrotate_test_rendered.content | b64decode)"
+          - "'copytruncate' not in (logrotate_test_rendered.content | b64decode)"
+          - "'podman-component' not in (logrotate_test_rendered.content | b64decode)"

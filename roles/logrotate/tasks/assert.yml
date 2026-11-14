@@ -1,0 +1,50 @@
+---
+- name: Validate the RPM logrotate interface
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.os_family == 'RedHat'
+      - logrotate_name is string
+      - logrotate_name is match('^[A-Za-z0-9][A-Za-z0-9_-]{0,100}$')
+      - logrotate_paths is sequence and logrotate_paths is not string and logrotate_paths is not mapping
+      - logrotate_paths | length > 0
+      - logrotate_paths | unique | length == logrotate_paths | length
+      - logrotate_protected_directories is sequence and logrotate_protected_directories is not string
+      - logrotate_protected_directories is not mapping
+      - logrotate_user is match('^[a-z_][a-z0-9_-]*$')
+      - logrotate_group is match('^[a-z_][a-z0-9_-]*$')
+      - logrotate_create_mode is string and logrotate_create_mode is match('^0[0-7]{3}$')
+      - logrotate_archive_count is integer and logrotate_archive_count > 0 and logrotate_archive_count <= 1000
+      - logrotate_max_age_days is integer and logrotate_max_age_days > 0
+      - logrotate_max_size is string and logrotate_max_size is match('^[1-9][0-9]*[kMG]?$')
+      - logrotate_copytruncate is boolean
+      - logrotate_postrotate is string
+      - logrotate_timer_calendar is string
+      - logrotate_timer_calendar is match('^[A-Za-z0-9*,:/ .-]*$')
+      - logrotate_timer_enabled is boolean
+    quiet: true
+
+- name: Require explicit canonical log and protected directory paths
+  ansible.builtin.assert:
+    that:
+      - logrotate_path is string
+      - logrotate_path is match('^/[A-Za-z0-9_./-]+$')
+      - not logrotate_path.endswith('/')
+      - "'..' not in logrotate_path.split('/')"
+      - "'.' not in logrotate_path.split('/')"
+      - "'//' not in logrotate_path"
+    quiet: true
+  loop: "{{ logrotate_paths + logrotate_protected_directories }}"
+  loop_control:
+    loop_var: logrotate_path
+
+- name: Exclude declared data and backup directories from rotation
+  ansible.builtin.assert:
+    that:
+      - logrotate_pair.0 != logrotate_pair.1
+      - not logrotate_pair.0.startswith(logrotate_pair.1 + '/')
+      - not logrotate_pair.1.startswith(logrotate_pair.0 + '/')
+    quiet: true
+    fail_msg: Rotation paths must exclude protected data and backup trees.
+  loop: "{{ logrotate_paths | product(logrotate_protected_directories) | list }}"
+  loop_control:
+    loop_var: logrotate_pair

@@ -1,0 +1,6 @@
+---
+- name: Reload logrotate timer
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+    name: logrotate.timer
+    state: "{{ 'restarted' if logrotate_timer_enabled else 'stopped' }}"
