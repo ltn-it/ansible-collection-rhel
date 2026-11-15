@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - >-
+    logrotate - repeat the effective vendor configuration check after native log file preparation,
+    so existing wildcard rules cannot silently overlap a newly created source.

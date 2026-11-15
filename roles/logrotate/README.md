@@ -47,6 +47,10 @@ disables inherited `olddir`, `copy`, `renamecopy`, hardlink rotation and shreddi
 rename mode also disables inherited `copytruncate`. Existing hardlinked active
 sources are rejected before rule installation. These local settings keep global
 archive destinations or copy policies from bypassing protected-directory checks.
+The effective vendor configuration is checked again after preparing native files:
+an existing wildcard rule may only expand to a selected source once that file
+exists. A conflict stops the role before publishing its rule or changing the timer;
+new empty files prepared before that check can remain for inspection.
 
 An empty `logrotate_timer_calendar` preserves the vendor schedule and removes only
 the role-owned `60-lit-logrotate.conf` override. A nonempty calendar changes the

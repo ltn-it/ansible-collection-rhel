@@ -49,6 +49,12 @@
     - logrotate_prepare_container_files | bool
     - logrotate_paths | select('match', '^/var/log/podman-components/') | list | length > 0
 
+- name: Revalidate vendor rules after selected log files exist
+  ansible.builtin.import_tasks: effective_layout.yml
+  when:
+    - logrotate_prepare_container_files | bool
+    - logrotate_paths | select('match', '^/var/log/podman-components/') | list | length > 0
+
 - name: Validate the explicitly selected vendor timer calendar
   ansible.builtin.command:
     argv: [/usr/bin/systemd-analyze, calendar, "{{ logrotate_timer_calendar }}"]

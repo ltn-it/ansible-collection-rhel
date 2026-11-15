@@ -165,6 +165,7 @@
       layout. Inspect global extension/addextension settings or vendor config errors;
       keep incompatible naming inside other individual stanzas before retrying.
       The host must permit root to create a private mount namespace for this read-only probe.
-      Selected log files have not been prepared or relabeled by this role.
+      No candidate rule or timer change has been installed. If native file preparation
+      already ran, its selected empty files and labels can remain for inspection.
     quiet: true
   when: logrotate_layout_ready | bool
