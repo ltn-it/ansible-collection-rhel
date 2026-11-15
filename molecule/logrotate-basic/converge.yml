@@ -372,3 +372,47 @@
         - name: Require the hidden archive link guard to reject the fixture
           ansible.builtin.assert:
             that: ansible_failed_task.name == 'Refuse to relabel archives linked to other data'
+
+    - name: Extract actual packaged active-source inspection without changing the OS
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -c
+          - |
+            import pathlib,sys,yaml
+            tasks=yaml.safe_load(pathlib.Path(sys.argv[1]).read_text())
+            names=['Inspect explicitly selected existing log files',
+                   'Refuse existing symlinks and non-regular rotation sources']
+            selected=[task for task in tasks if task['name'] in names]
+            assert len(selected)==2
+            print(yaml.safe_dump(selected,sort_keys=False))
+          - "{{ logrotate_test_role }}/tasks/main.yml"
+      changed_when: false
+      register: logrotate_test_active_inspection
+
+    - name: Stage only the packaged active-source inspection tasks
+      ansible.builtin.copy:
+        dest: "{{ logrotate_test_root }}/inspect-active.yml"
+        content: "{{ logrotate_test_active_inspection.stdout }}"
+        mode: "0600"
+
+    - name: Prepare a hardlinked active log alias to the protected payload
+      ansible.builtin.file:
+        src: "{{ logrotate_test_root }}/archive-scope/backups/application.log.1.gz"
+        dest: "{{ logrotate_test_root }}/linked-family/active.log"
+        state: hard
+        mode: "0600"
+
+    - name: Reject an existing hardlinked active source before rule installation
+      block:
+        - name: Run the packaged active-file inspection on the linked alias
+          ansible.builtin.include_tasks: "{{ logrotate_test_root }}/inspect-active.yml"
+          vars:
+            logrotate_paths: ["{{ logrotate_test_root }}/linked-family/active.log"]
+        - name: Fail if a hardlinked active source was accepted
+          ansible.builtin.fail:
+            msg: A hardlinked active rotation source was accepted.
+      rescue:
+        - name: Require the active-source guard to reject the hardlink
+          ansible.builtin.assert:
+            that: ansible_failed_task.name == 'Refuse existing symlinks and non-regular rotation sources'

@@ -28,6 +28,7 @@
     that:
       - not logrotate_file.stat.exists or logrotate_file.stat.isreg | default(false)
       - not logrotate_file.stat.islnk | default(false)
+      - not logrotate_file.stat.exists or logrotate_file.stat.nlink | default(0) == 1
     quiet: true
   loop: "{{ logrotate_existing_files.results }}"
   loop_control:

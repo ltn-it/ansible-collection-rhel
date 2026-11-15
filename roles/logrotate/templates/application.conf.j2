@@ -10,12 +10,18 @@
     compress
     nodelaycompress
     nodateext
+    noolddir
+    nocopy
+    norenamecopy
+    noallowhardlink
+    noshred
     missingok
     ifempty
     su {{ logrotate_user }} {{ logrotate_group }}
 {% if logrotate_copytruncate %}
     copytruncate
 {% else %}
+    nocopytruncate
     create {{ logrotate_create_mode }} {{ logrotate_user }} {{ logrotate_group }}
 {% endif %}
 {% if logrotate_postrotate | length > 0 %}

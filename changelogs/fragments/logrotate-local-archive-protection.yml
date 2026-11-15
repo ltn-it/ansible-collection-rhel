@@ -1,0 +1,7 @@
+---
+bugfixes:
+  - >-
+    logrotate - keep archives beside validated log sources and explicitly override inherited
+    olddir, copying, hardlink and shredding settings to preserve protected data.
+  - >-
+    logrotate - reject existing hardlinked rotation sources before installing a rule.
