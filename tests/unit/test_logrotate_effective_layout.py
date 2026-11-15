@@ -20,7 +20,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
 class EffectiveLayoutTests(unittest.TestCase):
-    def probe(self, rc, error, rename_extension=False, before="", after="", unsafe_snapshot=False):
+    def probe(self, rc, error, rename_extension=False, before="", after="", unsafe_snapshot=False, conflict=False):
         tasks = yaml.safe_load((ROOT / "roles/logrotate/tasks/effective_layout.yml").read_text())
         task = next(t for t in tasks if t["name"].startswith("Probe effective archive names"))
         program = task["ansible.builtin.command"]["argv"][2]
@@ -36,9 +36,15 @@ class EffectiveLayoutTests(unittest.TestCase):
             self.assertEqual(arguments[0], "/usr/bin/unshare")
             self.assertIn("remount,bind,ro", arguments[6])
             shadow = pathlib.Path(arguments[-4])
-            self.assertIn(str(path), (shadow / "fixture").read_text())
             self.assertEqual((shadow / "unrelated").read_text(), "unchanged vendor rule\n")
             self.assertEqual((shadow / "unrelated").stat().st_uid, (original / "unrelated").stat().st_uid)
+            if '--debug --force' not in arguments[6]:
+                self.assertIn(values['sources'][0], (shadow / "fixture").read_text())
+                self.assertNotIn(str(path), (shadow / "fixture").read_text())
+                return subprocess.CompletedProcess(arguments, 1 if conflict else 0, '',
+                                                   'error: duplicate log entry /var/log/example/application.log\n'
+                                                   if conflict else '')
+            self.assertIn(str(path), (shadow / "fixture").read_text())
             archive = path.with_name("application.1.log.gz") if rename_extension else pathlib.Path(str(path) + ".1.gz")
             return subprocess.CompletedProcess(arguments, rc, str(path) + " -> " + str(archive) + "\n",
                                                error.replace("CANDIDATE", str(path)))
@@ -86,6 +92,11 @@ class EffectiveLayoutTests(unittest.TestCase):
 
     def test_rejects_a_candidate_archive_collision(self):
         self.assertFalse(self.probe(1, "error: destination CANDIDATE.1.gz already exists, skipping rotation\n")["ok"])
+
+    def test_rejects_a_real_path_conflict_before_substituting_layout_paths(self):
+        result = self.probe(0, "", conflict=True)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "vendor_configuration_failed")
 
     def test_rejects_syntax_errors_even_with_an_unrelated_collision(self):
         errors = ("error: destination /var/log/cron-20261115 already exists, skipping rotation\n"

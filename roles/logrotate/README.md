@@ -133,8 +133,12 @@ their parent paths. This is checked before preparation, labeling or installation
 
 The stanza fixes numbering from one, gzip commands/options and the `.gz` suffix.
 Before preparing or relabeling selected files, the installed vendor parser checks
-the rendered rule at its installed filename and include position using private
-dummy logs with the same basenames. A short-lived private mount namespace binds a
+the rendered rule with its real source paths to detect conflicts with other
+installed rules. This debug-only pass does not force rotation. Only after that
+passes does a second debug pass substitute private logs to check archive names.
+Both passes read the rendered rule at its installed filename and include position;
+the layout pass uses private dummy logs with the same basenames.
+A short-lived private mount namespace binds a
 metadata-preserving snapshot over `/etc/logrotate.d` only in the validator child;
 the host directory is unchanged. The logrotate and util-linux RPMs and normal host
 root permission to create that namespace are required. Unsupported snapshots

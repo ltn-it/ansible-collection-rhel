@@ -95,8 +95,21 @@
                         'exec /usr/sbin/logrotate --debug --force --state "$4" "$3"')
                 command=['/usr/bin/unshare','--mount','--propagation','private','/bin/sh','-c',
                          script,'lit-logrotate-probe',str(shadow),str(original),sys.argv[1],str(base/'state')]
-                call=subprocess.run(command,cwd='/',env=dict(os.environ,LC_ALL='C'),
-                                    capture_output=True,text=True,timeout=60)
+                # Preserve real path identities for the vendor's cross-rule
+                # duplicate check before replacing them with layout fixtures.
+                config.write_text(values['configuration'])
+                validation_command=list(command)
+                validation_command[6]=script.replace('--debug --force','--debug')
+                validation=subprocess.run(validation_command,cwd='/',env=dict(os.environ,LC_ALL='C'),
+                                          capture_output=True,text=True,timeout=60)
+                validation_errors=[line for line in validation.stderr.splitlines() if line.startswith('error:')]
+                validation_collisions=[line for line in validation_errors if re.fullmatch(
+                    r'error: destination (.+) already exists, skipping rotation',line)]
+                validation_ok=(validation.returncode==0 or (validation.returncode==1 and
+                    bool(validation_errors) and len(validation_collisions)==len(validation_errors)))
+                config.write_text(configuration)
+                call=(subprocess.run(command,cwd='/',env=dict(os.environ,LC_ALL='C'),
+                                     capture_output=True,text=True,timeout=60) if validation_ok else validation)
                 errors=[line for line in call.stderr.splitlines() if line.startswith('error:')]
                 collisions=[]
                 for line in errors:
@@ -106,7 +119,9 @@
                 # A forced debug pass also visits unrelated vendor stanzas. A
                 # date archive created earlier today is no candidate parse error.
                 benign=call.returncode==1 and bool(errors) and len(collisions)==len(errors)
-                if call.returncode and not benign:
+                if not validation_ok:
+                    result={'ok':False,'reason':'vendor_configuration_failed','rc':validation.returncode}
+                elif call.returncode and not benign:
                     result={'ok':False,'reason':'vendor_debug_failed','rc':call.returncode}
                 else:
                     observed=set(re.findall(re.escape(str(logs))+r'/[^\s"\x27]+',call.stdout+call.stderr))
