@@ -62,12 +62,18 @@ mode 0600. Existing content and timestamps are preserved. Foreign owners,
 non-private files/directories, links and paths outside the flat namespace are
 not repurposed. Other rotation sources, such as separately managed backup
 operation logs, are not created by this option. Active SELinux uses the standard
-persistent `container_log_t` mapping. No capture program or additional service
+persistent `container_log_t` mappings restricted to selected files, numbered
+archives and exact required directories. Relabeling is non-recursive; protected
+subtrees and unrelated files are not relabeled. Existing archives with multiple
+hard links are rejected before relabeling. The former role-owned namespace-wide
+mapping is retired only when its current type is `container_log_t`; a foreign
+type at that target stops the role. No capture program or additional service
 is installed. Normal operating-system and account preparation remains required.
 
 ## Dependencies
 
-No additional collection role dependency. Uses `ansible.builtin` modules only.
+No additional collection role dependency. Uses `ansible.builtin` modules and
+`community.general.sefcontext` for the optional SELinux preparation.
 
 ## Example Playbook
 

@@ -226,3 +226,83 @@
           - >-
             logrotate_container_directories.results | map(attribute='item') | sort | list ==
             ['/var/log/podman-components/App', '/var/log/podman-components/app']
+
+    - name: Prepare an archive selection fixture with a protected child
+      ansible.builtin.file:
+        path: "{{ logrotate_test_root }}/archive-scope/backups"
+        state: directory
+        mode: "0700"
+
+    - name: Create selected and unrelated archive fixture files
+      ansible.builtin.copy:
+        dest: "{{ logrotate_test_root }}/archive-scope/{{ item }}"
+        content: "PRESERVE_ARCHIVE_SCOPE\n"
+        mode: "0600"
+      loop:
+        - application.log
+        - application.log.1.gz
+        - unrelated.log.1.gz
+        - backups/application.log.1.gz
+
+    - name: Extract actual packaged archive inspection tasks without SELinux mutation
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -c
+          - |
+            import pathlib,sys,yaml
+            tasks=yaml.safe_load(pathlib.Path(sys.argv[1]).read_text())
+            assert [next(iter(t['ansible.builtin.command']['argv'])) for t in tasks
+                    if t['name']=='Apply labels to selected paths without recursive traversal']==['restorecon']
+            relabel=next(t for t in tasks if t['name']=='Apply labels to selected paths without recursive traversal')
+            assert relabel['ansible.builtin.command']['argv']==['restorecon','-v','{'*2+' item '+'}'*2]
+            print(yaml.safe_dump(tasks[:3],sort_keys=False))
+          - "{{ logrotate_test_role }}/tasks/label_container_files.yml"
+      changed_when: false
+      register: logrotate_test_archive_inspection
+
+    - name: Stage the actual packaged archive inspection tasks
+      ansible.builtin.copy:
+        dest: "{{ logrotate_test_root }}/inspect-archives.yml"
+        content: "{{ logrotate_test_archive_inspection.stdout }}"
+        mode: "0600"
+
+    - name: Inspect only the selected numbered archive family
+      ansible.builtin.include_tasks: "{{ logrotate_test_root }}/inspect-archives.yml"
+      vars:
+        logrotate_container_paths: ["{{ logrotate_test_root }}/archive-scope/application.log"]
+
+    - name: Require protected and unrelated payloads to be excluded
+      ansible.builtin.assert:
+        that:
+          - logrotate_container_archive_metadata.results | length == 1
+          - >-
+            logrotate_container_archive_metadata.results[0].item ==
+            logrotate_test_root ~ '/archive-scope/application.log.1.gz'
+
+    - name: Create an isolated linked archive family
+      ansible.builtin.file:
+        path: "{{ logrotate_test_root }}/linked-family"
+        state: directory
+        mode: "0700"
+
+    - name: Create an archive-shaped hardlink to the protected payload
+      ansible.builtin.file:
+        src: "{{ logrotate_test_root }}/archive-scope/backups/application.log.1.gz"
+        dest: "{{ logrotate_test_root }}/linked-family/application.log.1.gz"
+        state: hard
+        mode: "0600"
+
+    - name: Reject an archive linked to protected data
+      block:
+        - name: Run actual archive inspection with the hardlink present
+          ansible.builtin.include_tasks: "{{ logrotate_test_root }}/inspect-archives.yml"
+          vars:
+            logrotate_container_paths: ["{{ logrotate_test_root }}/linked-family/application.log"]
+        - name: Fail if a protected hardlink was accepted
+          ansible.builtin.fail:
+            msg: Protected data hardlink was accepted for relabeling.
+      rescue:
+        - name: Require the archive link guard to reject the fixture
+          ansible.builtin.assert:
+            that: ansible_failed_task.name == 'Refuse to relabel archives linked to other data'

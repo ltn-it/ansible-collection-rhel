@@ -132,15 +132,5 @@
       ansible.builtin.package:
         name: policycoreutils-python-utils
         state: present
-    - name: Declare the persistent native container log label
-      community.general.sefcontext:
-        target: /var/log/podman-components(/.*)?
-        setype: container_log_t
-        state: present
-    - name: Apply the native log label without overriding customized labels
-      ansible.builtin.command:
-        argv: [restorecon, -R, -v, /var/log/podman-components]
-      environment:
-        LC_ALL: C
-      register: logrotate_container_restorecon
-      changed_when: logrotate_container_restorecon.stdout is search('(?m)^Relabeled ')
+    - name: Label only selected native files archives and required directories
+      ansible.builtin.include_tasks: label_container_files.yml
