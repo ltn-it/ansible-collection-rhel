@@ -34,7 +34,7 @@
 
 - name: Install logrotate from configured operating system RPM repositories
   ansible.builtin.package:
-    name: logrotate
+    name: [logrotate, util-linux]
     state: present
 
 - name: Validate effective vendor archive names before preparing selected files

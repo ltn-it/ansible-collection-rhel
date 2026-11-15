@@ -9,6 +9,7 @@ import pathlib
 import pwd
 import subprocess
 import sys
+import tempfile
 import types
 import unittest
 from unittest import mock
@@ -19,30 +20,64 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
 class EffectiveLayoutTests(unittest.TestCase):
-    def probe(self, rc, error):
+    def probe(self, rc, error, rename_extension=False, before="", after="", unsafe_snapshot=False):
         tasks = yaml.safe_load((ROOT / "roles/logrotate/tasks/effective_layout.yml").read_text())
         task = next(t for t in tasks if t["name"].startswith("Probe effective archive names"))
         program = task["ansible.builtin.command"]["argv"][2]
-        values = dict(user="fixture", group="fixture", sources=["/var/log/example/application.log"],
+        values = dict(name="fixture", user="fixture", group="fixture", sources=["/var/log/example/application.log"],
                       configuration='"/var/log/example/application.log"\n{ daily }\n')
         uid, gid = os.getuid(), os.getgid()
 
         def vendor(arguments, **_kwargs):
             base = pathlib.Path(arguments[-1]).parent
             path = base / "logs/0/application.log"
-            return subprocess.CompletedProcess(arguments, rc, str(path) + " -> " + str(path) + ".1.gz\n",
+            self.assertEqual(arguments[-2], str(global_config))
+            self.assertEqual(arguments[-3], str(original))
+            self.assertEqual(arguments[0], "/usr/bin/unshare")
+            self.assertIn("remount,bind,ro", arguments[6])
+            shadow = pathlib.Path(arguments[-4])
+            self.assertIn(str(path), (shadow / "fixture").read_text())
+            self.assertEqual((shadow / "unrelated").read_text(), "unchanged vendor rule\n")
+            self.assertEqual((shadow / "unrelated").stat().st_uid, (original / "unrelated").stat().st_uid)
+            archive = path.with_name("application.1.log.gz") if rename_extension else pathlib.Path(str(path) + ".1.gz")
+            return subprocess.CompletedProcess(arguments, rc, str(path) + " -> " + str(archive) + "\n",
                                                error.replace("CANDIDATE", str(path)))
 
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        original = pathlib.Path(temporary.name) / "rules"
+        original.mkdir()
+        (original / "unrelated").write_text("unchanged vendor rule\n")
+        if unsafe_snapshot:
+            os.link(original / "unrelated", original / "linked")
+        global_config = original.parent / "global.conf"
+        global_config.write_text(before + "include " + str(original) + "\n" + after)
         output = io.StringIO()
         with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(values))), mock.patch.object(
-            sys, "argv", ["fixture", "/etc/logrotate.conf"]
+            sys, "argv", ["fixture", str(global_config), str(original)]
         ), mock.patch.object(os, "geteuid", return_value=0), mock.patch.object(
             pwd, "getpwnam", return_value=types.SimpleNamespace(pw_uid=uid)
         ), mock.patch.object(grp, "getgrnam", return_value=types.SimpleNamespace(gr_gid=gid)), mock.patch.object(
             subprocess, "run", side_effect=vendor
         ), contextlib.redirect_stdout(output):
             exec(compile(program, "packaged-layout-probe", "exec"), {})  # noqa: S102 -- exact shipped code, mocked OS call.
+        self.assertEqual({path.name for path in original.iterdir()}, {"unrelated", "linked"} if unsafe_snapshot else {"unrelated"})
+        self.assertEqual(global_config.read_text(), before + "include " + str(original) + "\n" + after)
+        self.assertEqual((original / "unrelated").read_text(), "unchanged vendor rule\n")
         return json.loads(output.getvalue())
+
+    def test_rejects_names_inherited_before_include_despite_a_later_reset(self):
+        result = self.probe(0, "", rename_extension=True, before="extension .log\n", after="extension .other\n")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "incompatible_archive_names")
+
+    def test_accepts_numbered_names_at_include_despite_incompatible_end_settings(self):
+        self.assertTrue(self.probe(0, "", before="extension .other\n", after="extension .log\n")["ok"])
+
+    def test_refuses_a_snapshot_that_cannot_preserve_configuration_identity(self):
+        result = self.probe(0, "", unsafe_snapshot=True)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "probe_failed")
 
     def test_accepts_only_unrelated_existing_archive_collisions(self):
         result = self.probe(1, "error: destination /var/log/cron-20261115 already exists, skipping rotation\n")

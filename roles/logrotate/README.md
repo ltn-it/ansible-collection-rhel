@@ -133,14 +133,20 @@ their parent paths. This is checked before preparation, labeling or installation
 
 The stanza fixes numbering from one, gzip commands/options and the `.gz` suffix.
 Before preparing or relabeling selected files, the installed vendor parser checks
-the rendered rule after the real `/etc/logrotate.conf` using private dummy logs
-with the same basenames. `--debug --force` performs no real rotation or hook
+the rendered rule at its installed filename and include position using private
+dummy logs with the same basenames. A short-lived private mount namespace binds a
+metadata-preserving snapshot over `/etc/logrotate.d` only in the validator child;
+the host directory is unchanged. The logrotate and util-linux RPMs and normal host
+root permission to create that namespace are required. Unsupported snapshots
+(special files, hardlinked configuration files, other devices, more than eight
+directory levels, 1024 entries or 8 MiB of regular config data) fail closed.
+`--debug --force` performs no real rotation or hook
 execution. Unexpected archive names, including inherited extension/addextension
 effects, stop the role; move incompatible global naming into its intended individual
 stanzas. The role does not rewrite global configuration. Temporary files are
 removed and diagnostic output is kept private because other rules may contain
 sensitive hook arguments. A fresh check without the RPM explicitly defers this
-parser proof; real application must pass it.
+parser proof until both RPM prerequisites exist; real application must pass it.
 Existing date archives from unrelated vendor stanzas can make a forced debug pass
 return one. Only that exact unrelated collision diagnostic is tolerated; candidate
 collisions, parser errors and other nonzero results still stop preparation.
