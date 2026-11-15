@@ -67,7 +67,7 @@
                 shadow=base/'rules';shutil.copytree(original,shadow,symlinks=True)
                 for relative,owner,group in metadata:
                     os.chown(shadow/relative,owner,group,follow_symlinks=False)
-                logs=base/'logs';logs.mkdir(mode=0o711)
+                logs=base/'logs';logs.mkdir(mode=0o711);logs.chmod(0o711)
                 probes=[];configuration=values['configuration']
                 for index,source in enumerate(values['sources']):
                     parent=logs/str(index);parent.mkdir(mode=0o700);os.chown(parent,uid,gid)

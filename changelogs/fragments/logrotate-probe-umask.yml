@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - logrotate - preserve traversal of private runtime probe ancestry under a restrictive
+    root umask without changing the ownership or access mode of the probe logs.

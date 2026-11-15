@@ -21,7 +21,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 class EffectiveLayoutTests(unittest.TestCase):
     def probe(self, rc, error, rename_extension=False, before="", after="", unsafe_snapshot=False,
-              conflict=False, ignored_source=None):
+              conflict=False, ignored_source=None, restricted_umask=False):
         tasks = yaml.safe_load((ROOT / "roles/logrotate/tasks/effective_layout.yml").read_text())
         task = next(t for t in tasks if t["name"].startswith("Probe effective archive names"))
         program = task["ansible.builtin.command"]["argv"][2]
@@ -32,6 +32,7 @@ class EffectiveLayoutTests(unittest.TestCase):
         def vendor(arguments, **_kwargs):
             base = pathlib.Path(arguments[-1]).parent
             path = base / "logs/0/application.log"
+            self.assertEqual((base / 'logs').stat().st_mode & 0o111, 0o111)
             self.assertEqual(arguments[-2], str(global_config))
             self.assertEqual(arguments[-3], str(original))
             self.assertEqual(arguments[0], "/usr/bin/unshare")
@@ -68,7 +69,12 @@ class EffectiveLayoutTests(unittest.TestCase):
         ), mock.patch.object(grp, "getgrnam", return_value=types.SimpleNamespace(gr_gid=gid)), mock.patch.object(
             subprocess, "run", side_effect=vendor
         ), contextlib.redirect_stdout(output):
-            exec(compile(program, "packaged-layout-probe", "exec"), {})  # noqa: S102 -- exact shipped code, mocked OS call.
+            old_umask = os.umask(0o077) if restricted_umask else None
+            try:
+                exec(compile(program, "packaged-layout-probe", "exec"), {})  # noqa: S102 -- shipped code, mocked OS call.
+            finally:
+                if old_umask is not None:
+                    os.umask(old_umask)
         self.assertEqual({path.name for path in original.iterdir()}, {"unrelated", "linked"} if unsafe_snapshot else {"unrelated"})
         self.assertEqual(global_config.read_text(), before + "include " + str(original) + "\n" + after)
         self.assertEqual((original / "unrelated").read_text(), "unchanged vendor rule\n")
@@ -81,6 +87,9 @@ class EffectiveLayoutTests(unittest.TestCase):
 
     def test_accepts_numbered_names_at_include_despite_incompatible_end_settings(self):
         self.assertTrue(self.probe(0, "", before="extension .other\n", after="extension .log\n")["ok"])
+
+    def test_runtime_probe_ancestry_remains_searchable_under_private_root_umask(self):
+        self.assertTrue(self.probe(0, "", restricted_umask=True)["ok"])
 
     def test_refuses_a_snapshot_that_cannot_preserve_configuration_identity(self):
         result = self.probe(0, "", unsafe_snapshot=True)
