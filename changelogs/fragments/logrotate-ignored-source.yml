@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - >-
+    logrotate - reject a selected source silently skipped by the vendor because an earlier
+    overlapping rule enables ignoreduplicates, even when the debug command returns success.

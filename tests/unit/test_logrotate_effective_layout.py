@@ -20,7 +20,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
 class EffectiveLayoutTests(unittest.TestCase):
-    def probe(self, rc, error, rename_extension=False, before="", after="", unsafe_snapshot=False, conflict=False):
+    def probe(self, rc, error, rename_extension=False, before="", after="", unsafe_snapshot=False,
+              conflict=False, ignored_source=None):
         tasks = yaml.safe_load((ROOT / "roles/logrotate/tasks/effective_layout.yml").read_text())
         task = next(t for t in tasks if t["name"].startswith("Probe effective archive names"))
         program = task["ansible.builtin.command"]["argv"][2]
@@ -41,9 +42,10 @@ class EffectiveLayoutTests(unittest.TestCase):
             if '--debug --force' not in arguments[6]:
                 self.assertIn(values['sources'][0], (shadow / "fixture").read_text())
                 self.assertNotIn(str(path), (shadow / "fixture").read_text())
-                return subprocess.CompletedProcess(arguments, 1 if conflict else 0, '',
-                                                   'error: duplicate log entry /var/log/example/application.log\n'
-                                                   if conflict else '')
+                diagnostic = ('error: duplicate log entry /var/log/example/application.log\n' if conflict else
+                              'fixture:3 ignore duplicate log entry for ' + ignored_source + '\n'
+                              if ignored_source is not None else '')
+                return subprocess.CompletedProcess(arguments, 1 if conflict else 0, '', diagnostic)
             self.assertIn(str(path), (shadow / "fixture").read_text())
             archive = path.with_name("application.1.log.gz") if rename_extension else pathlib.Path(str(path) + ".1.gz")
             return subprocess.CompletedProcess(arguments, rc, str(path) + " -> " + str(archive) + "\n",
@@ -97,6 +99,15 @@ class EffectiveLayoutTests(unittest.TestCase):
         result = self.probe(0, "", conflict=True)
         self.assertFalse(result["ok"])
         self.assertEqual(result["reason"], "vendor_configuration_failed")
+
+    def test_rejects_a_selected_source_ignored_despite_a_successful_vendor_exit(self):
+        result = self.probe(0, "", ignored_source="/var/log/example/application.log")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "selected_source_ignored")
+
+    def test_preserves_unrelated_deliberately_ignored_vendor_logs(self):
+        self.assertTrue(self.probe(0, "", ignored_source="/var/log/other/application.log")["ok"])
+        self.assertTrue(self.probe(0, "", ignored_source="/var/log/example/application.log.old")["ok"])
 
     def test_rejects_syntax_errors_even_with_an_unrelated_collision(self):
         errors = ("error: destination /var/log/cron-20261115 already exists, skipping rotation\n"

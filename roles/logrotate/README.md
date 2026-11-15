@@ -51,6 +51,9 @@ The effective vendor configuration is checked again after preparing native files
 an existing wildcard rule may only expand to a selected source once that file
 exists. A conflict stops the role before publishing its rule or changing the timer;
 new empty files prepared before that check can remain for inspection.
+An earlier rule using `ignoreduplicates` can make the vendor return success while
+skipping a selected source. That native diagnostic also rejects the candidate;
+deliberately ignored unrelated logs remain outside this check.
 
 An empty `logrotate_timer_calendar` preserves the vendor schedule and removes only
 the role-owned `60-lit-logrotate.conf` override. A nonempty calendar changes the
