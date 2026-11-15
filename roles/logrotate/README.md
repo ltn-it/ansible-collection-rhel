@@ -63,11 +63,15 @@ non-private files/directories, links and paths outside the flat namespace are
 not repurposed. Other rotation sources, such as separately managed backup
 operation logs, are not created by this option. Active SELinux uses the standard
 persistent `container_log_t` mappings restricted to selected files, numbered
-archives and exact required directories. Relabeling is non-recursive; protected
+archives (including dot-prefixed names) and exact required directories.
+Relabeling is non-recursive; protected
 subtrees and unrelated files are not relabeled. Existing archives with multiple
 hard links are rejected before relabeling. The former role-owned namespace-wide
 mapping is retired only when its current type is `container_log_t`; a foreign
-type at that target stops the role. No capture program or additional service
+type at that target stops the role. If target Python bindings are missing,
+check mode explicitly defers label validation instead of pretending that a
+predicted package installation made them available. Real applies fail on missing
+bindings after prerequisite installation. No capture program or additional service
 is installed. Normal operating-system and account preparation remains required.
 
 ## Dependencies

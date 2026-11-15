@@ -241,6 +241,8 @@
       loop:
         - application.log
         - application.log.1.gz
+        - .application.log
+        - .application.log.1.gz
         - unrelated.log.1.gz
         - backups/application.log.1.gz
 
@@ -267,18 +269,21 @@
         content: "{{ logrotate_test_archive_inspection.stdout }}"
         mode: "0600"
 
-    - name: Inspect only the selected numbered archive family
+    - name: Inspect ordinary and hidden selected numbered archive families
       ansible.builtin.include_tasks: "{{ logrotate_test_root }}/inspect-archives.yml"
       vars:
-        logrotate_container_paths: ["{{ logrotate_test_root }}/archive-scope/application.log"]
+        logrotate_container_paths:
+          - "{{ logrotate_test_root }}/archive-scope/application.log"
+          - "{{ logrotate_test_root }}/archive-scope/.application.log"
 
     - name: Require protected and unrelated payloads to be excluded
       ansible.builtin.assert:
         that:
-          - logrotate_container_archive_metadata.results | length == 1
+          - logrotate_container_archive_metadata.results | length == 2
           - >-
-            logrotate_container_archive_metadata.results[0].item ==
-            logrotate_test_root ~ '/archive-scope/application.log.1.gz'
+            logrotate_container_archive_metadata.results | map(attribute='item') | sort | list ==
+            [logrotate_test_root ~ '/archive-scope/.application.log.1.gz',
+             logrotate_test_root ~ '/archive-scope/application.log.1.gz']
 
     - name: Create an isolated linked archive family
       ansible.builtin.file:
@@ -304,5 +309,66 @@
             msg: Protected data hardlink was accepted for relabeling.
       rescue:
         - name: Require the archive link guard to reject the fixture
+          ansible.builtin.assert:
+            that: ansible_failed_task.name == 'Refuse to relabel archives linked to other data'
+
+    - name: Create a hidden archive hardlink to the protected payload
+      ansible.builtin.file:
+        src: "{{ logrotate_test_root }}/archive-scope/backups/application.log.1.gz"
+        dest: "{{ logrotate_test_root }}/linked-family/.application.log.1.gz"
+        state: hard
+        mode: "0600"
+
+    - name: Exercise actual SELinux prerequisite checks with unavailable target bindings
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -c
+          - |
+            import os,pathlib,subprocess,sys,tempfile,yaml
+            source=pathlib.Path(sys.argv[1])
+            tasks=yaml.safe_load(source.read_text())
+            block=next(t['block'] for t in tasks if t['name']==
+                       'Label native container log destinations when SELinux is active')
+            assert len(block)==4
+            with tempfile.TemporaryDirectory(prefix='bindings-',dir=sys.argv[2]) as directory:
+                root=pathlib.Path(directory)
+                subprocess.run([sys.executable,'-m','venv','--without-pip',str(root/'python')],check=True)
+                python=str(root/'python/bin/python')
+                missing=subprocess.run([python,'-c','import selinux,seobject'],capture_output=True)
+                assert missing.returncode!=0 and b'ModuleNotFoundError' in missing.stderr
+                play=[dict(name='Probe missing target prerequisites',hosts='localhost',
+                           connection='local',gather_facts=False,
+                           vars=dict(ansible_python_interpreter=sys.executable,
+                                     ansible_facts=dict(python=dict(executable=python))),
+                           tasks=block[1:])]
+                path=root/'probe.yml'
+                path.write_text(yaml.safe_dump(play,sort_keys=False))
+                environment=dict(os.environ,ANSIBLE_STDOUT_CALLBACK='default',ANSIBLE_NOCOLOR='1')
+                command=['ansible-playbook','-i','localhost,',str(path)]
+                checked=subprocess.run(command+['--check'],capture_output=True,text=True,env=environment)
+                assert checked.returncode==0,checked.stdout+checked.stderr
+                assert 'SELinux label validation is deferred' in checked.stdout
+                assert 'skipping: [localhost]' in checked.stdout
+                applied=subprocess.run(command,capture_output=True,text=True,env=environment)
+                assert applied.returncode!=0,applied.stdout+applied.stderr
+                assert 'ModuleNotFoundError' in applied.stdout+applied.stderr,applied.stdout+applied.stderr
+                assert 'SELinux label validation is deferred' not in applied.stdout+applied.stderr
+            print('CHECK_MODE_DEFERRED True REAL_APPLY_REJECTED True')
+          - "{{ logrotate_test_role }}/tasks/prepare_container_files.yml"
+          - "{{ logrotate_test_root }}"
+      changed_when: false
+
+    - name: Reject a hidden archive linked to protected data
+      block:
+        - name: Inspect the hidden archive through actual packaged tasks
+          ansible.builtin.include_tasks: "{{ logrotate_test_root }}/inspect-archives.yml"
+          vars:
+            logrotate_container_paths: ["{{ logrotate_test_root }}/linked-family/.application.log"]
+        - name: Fail if a protected hidden hardlink was accepted
+          ansible.builtin.fail:
+            msg: Hidden archive hardlink was accepted for relabeling.
+      rescue:
+        - name: Require the hidden archive link guard to reject the fixture
           ansible.builtin.assert:
             that: ansible_failed_task.name == 'Refuse to relabel archives linked to other data'

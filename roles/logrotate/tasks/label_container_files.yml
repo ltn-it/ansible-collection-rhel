@@ -4,6 +4,7 @@
     paths: "{{ item | dirname }}"
     patterns: "{{ (item | basename | regex_escape) ~ '[.][1-9][0-9]*([.]gz)?$' }}"
     use_regex: true
+    hidden: true
     recurse: false
     follow: false
     file_type: file

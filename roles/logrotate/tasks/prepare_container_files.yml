@@ -132,5 +132,25 @@
       ansible.builtin.package:
         name: policycoreutils-python-utils
         state: present
+    - name: Check the target Python SELinux management bindings
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_facts.python.executable | default('/usr/bin/python3') }}"
+          - -c
+          - import selinux,seobject
+      changed_when: false
+      check_mode: false
+      register: logrotate_container_selinux_bindings
+      failed_when: logrotate_container_selinux_bindings.rc != 0 and not ansible_check_mode
     - name: Label only selected native files archives and required directories
       ansible.builtin.include_tasks: label_container_files.yml
+      when: logrotate_container_selinux_bindings.rc == 0
+    - name: Report deferred label validation when check mode cannot install bindings
+      ansible.builtin.debug:
+        msg: >-
+          SELinux label validation is deferred: the target Python management
+          bindings are unavailable and check mode cannot install prerequisites.
+          Apply the prerequisites before validating labels on this target.
+      when:
+        - ansible_check_mode
+        - logrotate_container_selinux_bindings.rc != 0
