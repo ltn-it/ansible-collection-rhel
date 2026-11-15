@@ -7,7 +7,7 @@
       - logrotate_name is match('^[A-Za-z0-9][A-Za-z0-9_-]{0,100}\Z')
       - logrotate_paths is sequence and logrotate_paths is not string and logrotate_paths is not mapping
       - logrotate_paths | length > 0
-      - logrotate_paths | unique | length == logrotate_paths | length
+      - logrotate_paths | unique(case_sensitive=true) | length == logrotate_paths | length
       - logrotate_protected_directories is sequence and logrotate_protected_directories is not string
       - logrotate_protected_directories is not mapping
       - logrotate_user is match('^[a-z_][a-z0-9_-]*\Z')

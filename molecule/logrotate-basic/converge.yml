@@ -167,3 +167,62 @@
         logrotate_user: application
         logrotate_group: application
         logrotate_create_mode: "0600"
+
+    - name: Accept distinct Linux filenames differing only by case
+      ansible.builtin.include_role:
+        name: lit.rhel.logrotate
+        tasks_from: assert
+      vars:
+        logrotate_paths: [/var/log/App.log, /var/log/app.log]
+
+    - name: Reject exact duplicate paths despite case-sensitive filename handling
+      block:
+        - name: Attempt an exact duplicate file path
+          ansible.builtin.include_role:
+            name: lit.rhel.logrotate
+            tasks_from: assert
+          vars:
+            logrotate_paths: [/var/log/App.log, /var/log/App.log]
+        - name: Fail if exact duplicates were accepted
+          ansible.builtin.fail:
+            msg: Exact duplicate paths were accepted.
+      rescue:
+        - name: Require the input uniqueness assertion to reject the duplicates
+          ansible.builtin.assert:
+            that: ansible_failed_task.name == 'Validate the RPM logrotate interface'
+
+    - name: Extract the actual packaged read-only directory inspection task
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -c
+          - |
+            import pathlib,sys,yaml
+            tasks=yaml.safe_load(pathlib.Path(sys.argv[1]).read_text())
+            selected=[task for task in tasks if task['name']=='Inspect declared native component directories']
+            assert len(selected)==1 and 'ansible.builtin.stat' in selected[0]
+            print(yaml.safe_dump(selected,sort_keys=False))
+          - "{{ logrotate_test_role }}/tasks/prepare_container_files.yml"
+      changed_when: false
+      register: logrotate_test_directory_inspection
+
+    - name: Stage only the packaged read-only inspection in the private test directory
+      ansible.builtin.copy:
+        dest: "{{ logrotate_test_root }}/inspect-case-directories.yml"
+        content: "{{ logrotate_test_directory_inspection.stdout }}"
+        mode: "0600"
+
+    - name: Execute the packaged directory loop for both case-distinct components
+      ansible.builtin.include_tasks: "{{ logrotate_test_root }}/inspect-case-directories.yml"
+      vars:
+        logrotate_container_paths:
+          - /var/log/podman-components/App/stdout.log
+          - /var/log/podman-components/app/stderr.log
+
+    - name: Require ownership and permission inspection for both Linux directories
+      ansible.builtin.assert:
+        that:
+          - logrotate_container_directories.results | length == 2
+          - >-
+            logrotate_container_directories.results | map(attribute='item') | sort | list ==
+            ['/var/log/podman-components/App', '/var/log/podman-components/app']

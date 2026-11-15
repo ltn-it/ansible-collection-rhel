@@ -57,7 +57,7 @@
   ansible.builtin.stat:
     path: "{{ item }}"
     follow: false
-  loop: "{{ logrotate_container_paths | map('dirname') | unique | list }}"
+  loop: "{{ logrotate_container_paths | map('dirname') | unique(case_sensitive=true) | list }}"
   register: logrotate_container_directories
 
 - name: Refuse foreign or non-private existing component directories
