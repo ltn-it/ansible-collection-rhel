@@ -34,6 +34,13 @@
   loop_control:
     loop_var: logrotate_file
 
+- name: Inspect the vendor timer before predicting package installation
+  ansible.builtin.stat:
+    path: /usr/lib/systemd/system/logrotate.timer
+    get_checksum: false
+    get_mime: false
+  register: logrotate_vendor_timer
+
 - name: Install logrotate from configured operating system RPM repositories
   ansible.builtin.package:
     name: logrotate
@@ -81,6 +88,15 @@
   when: logrotate_timer_calendar | length == 0
   notify: Reload logrotate timer
 
+- name: Report deferred timer reconciliation on a fresh-install dry run
+  ansible.builtin.debug:
+    msg: >-
+      Vendor timer activation is deferred in check mode until the real RPM
+      installation provides logrotate.timer. Run a real apply before claiming activation.
+  when:
+    - ansible_check_mode
+    - not logrotate_vendor_timer.stat.exists
+
 - name: Apply a changed vendor timer override before reconciling activation
   ansible.builtin.meta: flush_handlers
 
@@ -89,3 +105,4 @@
     name: logrotate.timer
     enabled: "{{ logrotate_timer_enabled }}"
     state: "{{ 'started' if logrotate_timer_enabled else 'stopped' }}"
+  when: not ansible_check_mode or logrotate_vendor_timer.stat.exists

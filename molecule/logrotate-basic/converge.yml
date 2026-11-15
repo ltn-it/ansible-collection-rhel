@@ -416,3 +416,40 @@
         - name: Require the active-source guard to reject the hardlink
           ansible.builtin.assert:
             that: ansible_failed_task.name == 'Refuse existing symlinks and non-regular rotation sources'
+
+    - name: Prove a fresh-install check run defers timer tasks and notified handlers
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -c
+          - |
+            import os,pathlib,subprocess,sys,tempfile,yaml
+            role=pathlib.Path(sys.argv[1])
+            tasks=yaml.safe_load((role/'tasks/main.yml').read_text())
+            names=['Report deferred timer reconciliation on a fresh-install dry run',
+                   'Apply a changed vendor timer override before reconciling activation',
+                   'Reconcile vendor logrotate timer activation']
+            selected=[task for task in tasks if task['name'] in names]
+            assert len(selected)==3
+            handlers=yaml.safe_load((role/'handlers/main.yml').read_text())
+            assert len(handlers)==1
+            environment=dict(os.environ,ANSIBLE_STDOUT_CALLBACK='default',ANSIBLE_NOCOLOR='1')
+            with tempfile.TemporaryDirectory(dir=sys.argv[2]) as temporary:
+                path=pathlib.Path(temporary)/'fresh-check.yml'
+                for enabled in [True,False]:
+                    values=dict(logrotate_vendor_timer=dict(stat=dict(exists=False)),logrotate_timer_enabled=enabled)
+                    notify=dict(name='Predict an override change',debug=dict(msg='check fixture'),
+                                changed_when=True,notify='Reload logrotate timer')
+                    play=[dict(name='Check timer before its RPM unit exists',hosts='localhost',connection='local',
+                               gather_facts=False,vars=values,tasks=[notify]+selected,handlers=handlers)]
+                    path.write_text(yaml.safe_dump(play,sort_keys=False))
+                    result=subprocess.run(['ansible-playbook','-i','localhost,','--check',str(path)],
+                                          env=environment,capture_output=True,text=True,timeout=90)
+                    assert result.returncode==0,result.stdout+result.stderr
+                    assert 'Vendor timer activation is deferred in check mode' in result.stdout,result.stdout
+                    assert 'RUNNING HANDLER [Reload logrotate timer]' in result.stdout,result.stdout
+                    assert 'skipped=2' in result.stdout,result.stdout
+            print('FRESH_CHECK_TIMER_AND_HANDLER_DEFERRED True BOTH_ACTIVATION_VALUES True')
+          - "{{ logrotate_test_role }}"
+          - "{{ logrotate_test_root }}"
+      changed_when: false

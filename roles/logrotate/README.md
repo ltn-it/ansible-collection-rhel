@@ -52,7 +52,12 @@ An empty `logrotate_timer_calendar` preserves the vendor schedule and removes on
 the role-owned `60-lit-logrotate.conf` override. A nonempty calendar changes the
 single vendor timer for **all** rules: consumers must agree on one shared value.
 The role validates it with `systemd-analyze calendar`. An application rule is
-validated with the installed RPM's `logrotate --debug` before replacement.
+validated with the installed RPM's `logrotate --debug` before replacement. A fresh-install
+check run reports timer activation as deferred while the vendor unit is absent;
+it does not call timer reconciliation or its restart handler against a unit that
+only a predicted package installation would provide. Real applies still install
+the RPM and reconcile the timer, and check runs with an existing unit still
+predict its activation changes.
 This role never forces rotation or creates/deletes application data or backups.
 
 Archive counts accept positive integers or their canonical decimal text form,
