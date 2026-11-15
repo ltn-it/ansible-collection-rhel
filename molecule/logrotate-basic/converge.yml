@@ -84,3 +84,86 @@
         that:
           - logrotate_test_rejected_backup | default(false)
           - not logrotate_test_accepted_backup | default(false)
+
+    - name: Prepare an isolated protected-data alias fixture
+      ansible.builtin.file:
+        path: "{{ logrotate_test_root }}/backups"
+        state: directory
+        mode: "0700"
+
+    - name: Create the symbolic alias without touching real backup data
+      ansible.builtin.file:
+        src: "{{ logrotate_test_root }}/backups"
+        dest: "{{ logrotate_test_root }}/alias"
+        state: link
+
+    - name: Reject an aliased source ancestor before rule installation
+      block:
+        - name: Validate an intentionally aliased rotation source
+          ansible.builtin.include_role:
+            name: lit.rhel.logrotate
+            tasks_from: assert
+          vars:
+            logrotate_paths: ["{{ logrotate_test_root }}/alias/database.sql"]
+        - name: Fail if the source alias was accepted
+          ansible.builtin.fail:
+            msg: A source alias was accepted.
+      rescue:
+        - name: Require the intended source-alias rejection
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Reject symbolic-link components in log and protected paths'
+              - ansible_failed_result.rc == 1
+
+    - name: Reject an aliased protected directory before rule installation
+      block:
+        - name: Validate an intentionally aliased protection declaration
+          ansible.builtin.include_role:
+            name: lit.rhel.logrotate
+            tasks_from: assert
+          vars:
+            logrotate_paths: ["{{ logrotate_test_root }}/backups/database.sql"]
+            logrotate_protected_directories: ["{{ logrotate_test_root }}/alias"]
+        - name: Fail if the protection alias was accepted
+          ansible.builtin.fail:
+            msg: A protected-directory alias was accepted.
+      rescue:
+        - name: Require the intended protection-alias rejection
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Reject symbolic-link components in log and protected paths'
+              - ansible_failed_result.rc == 1
+
+    - name: Reject incompatible replacement metadata for prepared container logs
+      block:
+        - name: Validate intentionally incompatible rename settings
+          ansible.builtin.include_role:
+            name: lit.rhel.logrotate
+            tasks_from: assert
+          vars:
+            logrotate_paths: [/var/log/podman-components/example/application.log]
+            logrotate_prepare_container_files: true
+            logrotate_container_user: application
+            logrotate_container_group: application
+        - name: Fail if incompatible rename settings were accepted
+          ansible.builtin.fail:
+            msg: Incompatible rename metadata was accepted.
+      rescue:
+        - name: Require the intended replacement-metadata rejection
+          ansible.builtin.assert:
+            that: >-
+              ansible_failed_task.name ==
+              'Require rename rotation settings compatible with prepared container log files'
+
+    - name: Accept matching runtime-owned replacements for rename rotation
+      ansible.builtin.include_role:
+        name: lit.rhel.logrotate
+        tasks_from: assert
+      vars:
+        logrotate_paths: [/var/log/podman-components/example/application.log]
+        logrotate_prepare_container_files: true
+        logrotate_container_user: application
+        logrotate_container_group: application
+        logrotate_user: application
+        logrotate_group: application
+        logrotate_create_mode: "0600"

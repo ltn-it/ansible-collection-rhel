@@ -4,23 +4,23 @@
     that:
       - ansible_facts.os_family == 'RedHat'
       - logrotate_name is string
-      - logrotate_name is match('^[A-Za-z0-9][A-Za-z0-9_-]{0,100}$')
+      - logrotate_name is match('^[A-Za-z0-9][A-Za-z0-9_-]{0,100}\Z')
       - logrotate_paths is sequence and logrotate_paths is not string and logrotate_paths is not mapping
       - logrotate_paths | length > 0
       - logrotate_paths | unique | length == logrotate_paths | length
       - logrotate_protected_directories is sequence and logrotate_protected_directories is not string
       - logrotate_protected_directories is not mapping
-      - logrotate_user is match('^[a-z_][a-z0-9_-]*$')
-      - logrotate_group is match('^[a-z_][a-z0-9_-]*$')
-      - logrotate_create_mode is string and logrotate_create_mode is match('^0[0-7]{3}$')
-      - logrotate_archive_count | string is match('^[1-9][0-9]{0,3}$')
+      - logrotate_user is match('^[a-z_][a-z0-9_-]*\Z')
+      - logrotate_group is match('^[a-z_][a-z0-9_-]*\Z')
+      - logrotate_create_mode is string and logrotate_create_mode is match('^0[0-7]{3}\Z')
+      - logrotate_archive_count | string is match('^[1-9][0-9]{0,3}\Z')
       - logrotate_archive_count | int <= 1000
       - logrotate_max_age_days is integer and logrotate_max_age_days > 0
-      - logrotate_max_size is string and logrotate_max_size is match('^[1-9][0-9]*[kMG]?$')
+      - logrotate_max_size is string and logrotate_max_size is match('^[1-9][0-9]*[kMG]?\Z')
       - logrotate_copytruncate is boolean
       - logrotate_postrotate is string
       - logrotate_timer_calendar is string
-      - logrotate_timer_calendar is match('^[A-Za-z0-9*,:/ .-]*$')
+      - logrotate_timer_calendar is match('^[A-Za-z0-9*,:/ .-]*\Z')
       - logrotate_timer_enabled is boolean
       - logrotate_prepare_container_files is boolean
       - logrotate_container_user is string
@@ -31,7 +31,7 @@
   ansible.builtin.assert:
     that:
       - logrotate_path is string
-      - logrotate_path is match('^/[A-Za-z0-9_./-]+$')
+      - logrotate_path is match('^/[A-Za-z0-9_./-]+\Z')
       - not logrotate_path.endswith('/')
       - "'..' not in logrotate_path.split('/')"
       - "'.' not in logrotate_path.split('/')"
@@ -56,8 +56,31 @@
 - name: Require an explicit runtime account when preparing container log files
   ansible.builtin.assert:
     that:
-      - logrotate_container_user is match('^[a-z_][a-z0-9_-]*$')
-      - logrotate_container_group is match('^[a-z_][a-z0-9_-]*$')
+      - logrotate_container_user is match('^[a-z_][a-z0-9_-]*\Z')
+      - logrotate_container_group is match('^[a-z_][a-z0-9_-]*\Z')
       - logrotate_container_user != 'root'
     quiet: true
   when: logrotate_prepare_container_files | bool
+
+- name: Require rename rotation settings compatible with prepared container log files
+  ansible.builtin.assert:
+    that:
+      - logrotate_create_mode == '0600'
+      - logrotate_user == logrotate_container_user
+      - logrotate_group == logrotate_container_group
+    quiet: true
+    fail_msg: Prepared container files require runtime-owned mode-0600 replacements when using rename rotation.
+  when:
+    - logrotate_prepare_container_files | bool
+    - not logrotate_copytruncate | bool
+    - logrotate_paths | select('match', '^/var/log/podman-components/') | list | length > 0
+
+- name: Reject symbolic-link components in log and protected paths
+  ansible.builtin.command:
+    argv: >-
+      {{ [ansible_facts.get('python', {}).get('executable', '/usr/bin/python3'), '-c',
+          'import pathlib,sys; sys.exit(any(part.is_symlink() for value in sys.argv[1:]
+          for part in (pathlib.Path(value), *pathlib.Path(value).parents)))']
+         + logrotate_paths + logrotate_protected_directories }}
+  changed_when: false
+  check_mode: false

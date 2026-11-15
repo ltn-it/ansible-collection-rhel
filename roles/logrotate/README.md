@@ -96,3 +96,10 @@ MIT.
 ## Author
 
 Lightning IT.
+
+All source and protected paths, including their ancestors, must be free of
+symbolic links. This is checked before preparation or rule installation.
+With container-file preparation and rename rotation, set `logrotate_user` and
+`logrotate_group` to the declared runtime account/group and
+`logrotate_create_mode: "0600"`. Incompatible replacement metadata is rejected
+before mutation; `copytruncate` keeps the original prepared inode and metadata.
