@@ -41,6 +41,9 @@
   loop_control:
     loop_var: logrotate_path
 
+- name: Validate reserved archive namespaces before any preparation
+  ansible.builtin.import_tasks: archive_namespace.yml
+
 - name: Exclude declared data and backup directories from rotation
   ansible.builtin.assert:
     that:

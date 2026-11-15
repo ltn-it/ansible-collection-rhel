@@ -453,3 +453,38 @@
           - "{{ logrotate_test_role }}"
           - "{{ logrotate_test_root }}"
       changed_when: false
+
+    - name: Extract the actual packaged archive namespace guard
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -c
+          - |
+            import json,os,pathlib,subprocess,sys,tempfile,yaml
+            role=pathlib.Path(sys.argv[1]);root=pathlib.Path(sys.argv[2])
+            tasks=yaml.safe_load((role/'tasks/archive_namespace.yml').read_text())
+            cases=[
+                (['/tmp/app.log','/tmp/app.log.1'],[],False),
+                (['/tmp/app.log.1.gz'],[],False),
+                (['/tmp/app.log','/tmp/app.log.1/child.log'],[],False),
+                (['/tmp/app.log'],['/tmp/app.log.1'],False),
+                (['/tmp/app.log'],['/tmp/app.log.1.gz/private'],False),
+                (['/tmp/App.log','/tmp/app.log'],['/tmp/data'],True),
+            ]
+            environment=dict(os.environ,ANSIBLE_STDOUT_CALLBACK='default',ANSIBLE_NOCOLOR='1')
+            with tempfile.TemporaryDirectory(dir=root) as temporary:
+                play=pathlib.Path(temporary)/'namespace.yml'
+                for sources,protected,accepted in cases:
+                    variables=dict(logrotate_paths=sources,logrotate_protected_directories=protected)
+                    variables['ansible_facts']={'python':{'executable':sys.executable}}
+                    play.write_text(yaml.safe_dump([dict(hosts='localhost',connection='local',
+                        gather_facts=False,vars=variables,tasks=tasks)],sort_keys=False))
+                    result=subprocess.run(['ansible-playbook','-i','localhost,',str(play)],
+                        env=environment,capture_output=True,text=True,timeout=90)
+                    assert (result.returncode==0)==accepted,result.stdout+result.stderr
+                    if not accepted:
+                        assert 'LOGROTATE_' in result.stdout+result.stderr,result.stdout+result.stderr
+            print('NUMBERED_ACTIVE_AND_PROTECTED_ARCHIVE_COLLISIONS_REJECTED True CASE_DISTINCT_ALLOWED True')
+          - "{{ logrotate_test_role }}"
+          - "{{ logrotate_test_root }}"
+      changed_when: false

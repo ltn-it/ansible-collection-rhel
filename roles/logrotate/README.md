@@ -124,3 +124,20 @@ With container-file preparation and rename rotation, set `logrotate_user` and
 `logrotate_group` to the declared runtime account/group and
 `logrotate_create_mode: "0600"`. Incompatible replacement metadata is rejected
 before mutation; `copytruncate` keeps the original prepared inode and metadata.
+
+Numbered archive basenames such as `application.log.1` and
+`application.log.1.gz` are reserved and cannot be selected as active sources.
+The complete numbered archive family of every selected source must also be
+disjoint from other selected active paths and declared protected trees, including
+their parent paths. This is checked before preparation, labeling or installation.
+
+The stanza fixes numbering from one, gzip commands/options and the `.gz` suffix.
+Before preparing or relabeling selected files, the installed vendor parser checks
+the rendered rule after the real `/etc/logrotate.conf` using private dummy logs
+with the same basenames. `--debug --force` performs no real rotation or hook
+execution. Unexpected archive names, including inherited extension/addextension
+effects, stop the role; move incompatible global naming into its intended individual
+stanzas. The role does not rewrite global configuration. Temporary files are
+removed and diagnostic output is kept private because other rules may contain
+sensitive hook arguments. A fresh check without the RPM explicitly defers this
+parser proof; real application must pass it.

@@ -7,7 +7,14 @@
     maxsize {{ logrotate_max_size }}
     rotate {{ logrotate_archive_count | int }}
     maxage {{ logrotate_max_age_days }}
+    minage 0
+    minsize 0
+    start 1
     compress
+    compresscmd /usr/bin/gzip
+    uncompresscmd /usr/bin/gunzip
+    compressext .gz
+    compressoptions -6
     nodelaycompress
     nodateext
     noolddir

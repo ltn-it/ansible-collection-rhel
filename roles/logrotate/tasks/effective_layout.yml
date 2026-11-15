@@ -1,0 +1,106 @@
+---
+- name: Inspect the RPM validator available after package reconciliation
+  ansible.builtin.stat:
+    path: /usr/sbin/logrotate
+    get_checksum: false
+    get_mime: false
+  register: logrotate_layout_binary
+
+- name: Require the RPM validator for real application
+  ansible.builtin.assert:
+    that: ansible_check_mode or logrotate_layout_binary.stat.exists
+    fail_msg: The installed logrotate RPM must provide its validator before policy preparation.
+    quiet: true
+
+- name: Report deferred effective archive layout on a fresh-install dry run
+  ansible.builtin.debug:
+    msg: >-
+      Effective vendor archive layout validation is deferred in check mode until
+      the real logrotate RPM is installed. Selected log namespaces are still checked.
+  when:
+    - ansible_check_mode
+    - not logrotate_layout_binary.stat.exists
+
+- name: Probe effective archive names with the actual RPM parser without rotating logs
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_facts.get('python', {}).get('executable', '/usr/bin/python3') }}"
+      - -c
+      - |
+        import grp,json,os,pathlib,pwd,re,subprocess,sys,tempfile
+        values=json.load(sys.stdin)
+        result={'ok':False,'reason':'probe_failed'}
+        try:
+            if os.geteuid()!=0:
+                raise PermissionError('root_required')
+            uid=pwd.getpwnam(values['user']).pw_uid
+            gid=grp.getgrnam(values['group']).gr_gid
+            with tempfile.TemporaryDirectory(prefix='lit-logrotate-layout-') as directory:
+                base=pathlib.Path(directory);os.chmod(base,0o711)
+                logs=base/'logs';logs.mkdir(mode=0o711)
+                probes=[];configuration=values['configuration']
+                for index,source in enumerate(values['sources']):
+                    parent=logs/str(index);parent.mkdir(mode=0o700);os.chown(parent,uid,gid)
+                    path=parent/pathlib.PurePosixPath(source).name
+                    fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+                    try:
+                        os.write(fd,b'private archive layout probe\n');os.fchown(fd,uid,gid)
+                    finally:
+                        os.close(fd)
+                    quoted='"'+source+'"'
+                    if quoted not in configuration:
+                        raise ValueError('rendered_source_missing')
+                    configuration=configuration.replace(quoted,'"'+str(path)+'"')
+                    probes.append(str(path))
+                config=base/'candidate.conf'
+                fd=os.open(config,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+                with os.fdopen(fd,'w') as stream:
+                    stream.write(configuration)
+                command=['/usr/sbin/logrotate','--debug','--force','--state',str(base/'state'),
+                         sys.argv[1],str(config)]
+                call=subprocess.run(command,cwd='/',env=dict(os.environ,LC_ALL='C'),
+                                    capture_output=True,text=True,timeout=60)
+                if call.returncode:
+                    result={'ok':False,'reason':'vendor_debug_failed','rc':call.returncode}
+                else:
+                    observed=set(re.findall(re.escape(str(logs))+r'/[^\s"\x27]+',call.stdout+call.stderr))
+                    observed={value.rstrip(':,);') for value in observed}
+                    archives=[0]*len(probes)
+                    invalid=False
+                    for value in observed:
+                        matched=False
+                        for index,path in enumerate(probes):
+                            if value==path:
+                                matched=True;break
+                            if re.fullmatch(re.escape(path)+r'[.][0-9]+(?:[.]gz)?',value):
+                                archives[index]+=1;matched=True;break
+                        if not matched:
+                            invalid=True
+                    valid=not invalid and all(count>0 for count in archives)
+                    result={'ok':valid,'reason':'verified' if valid else 'incompatible_archive_names',
+                            'sources':len(probes),'archive_paths':sum(archives)}
+        except Exception as error:
+            result={'ok':False,'reason':'probe_failed','error':type(error).__name__}
+        print(json.dumps(result,sort_keys=True))
+      - /etc/logrotate.conf
+    stdin: >-
+      {{ {'sources': logrotate_paths, 'user': logrotate_user, 'group': logrotate_group,
+          'configuration': lookup('ansible.builtin.template', 'application.conf.j2')} | to_json }}
+  changed_when: false
+  check_mode: false
+  no_log: true
+  register: logrotate_layout_probe
+  when: logrotate_layout_binary.stat.exists
+
+- name: Require the effective vendor archive layout to match discovery and protection
+  ansible.builtin.assert:
+    that:
+      - logrotate_layout_probe.rc == 0
+      - (logrotate_layout_probe.stdout | from_json).ok | bool
+    fail_msg: >-
+      The vendor configuration does not provide a verified numbered gzip archive
+      layout. Inspect global extension/addextension settings or vendor config errors;
+      keep incompatible naming inside other individual stanzas before retrying.
+      Selected log files have not been prepared or relabeled by this role.
+    quiet: true
+  when: logrotate_layout_binary.stat.exists
