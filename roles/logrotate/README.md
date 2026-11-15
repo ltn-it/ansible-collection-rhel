@@ -141,3 +141,6 @@ stanzas. The role does not rewrite global configuration. Temporary files are
 removed and diagnostic output is kept private because other rules may contain
 sensitive hook arguments. A fresh check without the RPM explicitly defers this
 parser proof; real application must pass it.
+Existing date archives from unrelated vendor stanzas can make a forced debug pass
+return one. Only that exact unrelated collision diagnostic is tolerated; candidate
+collisions, parser errors and other nonzero results still stop preparation.

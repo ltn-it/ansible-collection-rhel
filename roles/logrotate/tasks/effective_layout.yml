@@ -60,7 +60,16 @@
                          sys.argv[1],str(config)]
                 call=subprocess.run(command,cwd='/',env=dict(os.environ,LC_ALL='C'),
                                     capture_output=True,text=True,timeout=60)
-                if call.returncode:
+                errors=[line for line in call.stderr.splitlines() if line.startswith('error:')]
+                collisions=[]
+                for line in errors:
+                    match=re.fullmatch(r'error: destination (.+) already exists, skipping rotation',line)
+                    if match and not match[1].startswith(str(base)+'/'):
+                        collisions.append(line)
+                # A forced debug pass also visits unrelated vendor stanzas. A
+                # date archive created earlier today is no candidate parse error.
+                benign=call.returncode==1 and bool(errors) and len(collisions)==len(errors)
+                if call.returncode and not benign:
                     result={'ok':False,'reason':'vendor_debug_failed','rc':call.returncode}
                 else:
                     observed=set(re.findall(re.escape(str(logs))+r'/[^\s"\x27]+',call.stdout+call.stderr))
@@ -78,7 +87,8 @@
                             invalid=True
                     valid=not invalid and all(count>0 for count in archives)
                     result={'ok':valid,'reason':'verified' if valid else 'incompatible_archive_names',
-                            'sources':len(probes),'archive_paths':sum(archives)}
+                            'sources':len(probes),'archive_paths':sum(archives),
+                            'unrelated_existing_date_archives':len(collisions)}
         except Exception as error:
             result={'ok':False,'reason':'probe_failed','error':type(error).__name__}
         print(json.dumps(result,sort_keys=True))
