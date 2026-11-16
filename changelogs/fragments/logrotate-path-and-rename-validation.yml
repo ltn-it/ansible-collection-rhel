@@ -1,4 +1,0 @@
----
-bugfixes:
-  - logrotate - Reject symbolic-link components in all source and protected paths before mutation.
-  - logrotate - Require runtime-owned mode-0600 replacement files for prepared container rename rotation.

@@ -1,3 +1,0 @@
----
-bugfixes:
-  - logrotate - Preserve case-distinct Linux file paths and native component directories during deduplication.

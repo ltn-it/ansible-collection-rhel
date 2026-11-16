@@ -78,3 +78,126 @@ releases:
       - shared-assets-sync.yml
       - users-global-accounts.yml
     release_date: '2026-07-29'
+  1.24.0:
+    changes:
+      bugfixes:
+        - logrotate - Preserve case-distinct Linux file paths and native component
+          directories during deduplication.
+        - logrotate - Reject symbolic-link components in all source and protected
+          paths before mutation.
+        - logrotate - Require runtime-owned mode-0600 replacement files for prepared
+          container rename rotation.
+        - logrotate - accept canonical positive archive-count text forwarded through
+          Ansible variables while rejecting fractions, booleans and out-of-range values.
+        - logrotate - defer timer tasks and restart handlers during fresh-install
+          check mode until the RPM vendor unit exists.
+        - logrotate - fix gzip numbering and verify effective archive names with the
+          vendor parser before preparation without changing global configuration.
+        - logrotate - include dot-prefixed numbered archives in label and hardlink
+          checks, and defer SELinux label validation in check mode when the target
+          Python bindings have not yet been installed; real applies still fail.
+        - logrotate - keep archives beside validated log sources and explicitly override
+          inherited olddir, copying, hardlink and shredding settings to preserve protected
+          data.
+        - logrotate - limit SELinux mappings and non-recursive relabeling to selected
+          native log files, their numbered archives and required directories; retire
+          the former role-owned namespace mapping without traversing protected data.
+        - logrotate - pass timer calendars after the command option boundary so option-like
+          values cannot bypass calendar validation before timer configuration is published.
+        - logrotate - preserve traversal of private runtime probe ancestry under a
+          restrictive root umask without changing the ownership or access mode of
+          the probe logs.
+        - logrotate - reject a selected source silently skipped by the vendor because
+          an earlier overlapping rule enables ignoreduplicates, even when the debug
+          command returns success.
+        - logrotate - reject existing hardlinked rotation sources before installing
+          a rule.
+        - logrotate - reject numbered active sources and archive families that collide
+          with selected active paths or protected trees before preparation.
+        - logrotate - repeat the effective vendor configuration check after native
+          log file preparation, so existing wildcard rules cannot silently overlap
+          a newly created source.
+        - logrotate - tolerate only unrelated existing date-archive collisions during
+          forced debug validation, preserving candidate and parser failure checks.
+        - logrotate - validate candidates at their actual include position in a private
+          read-only directory view so later global resets cannot hide inherited names.
+        - logrotate - validate real source paths against existing vendor rules before
+          substituting private archive-layout fixtures.
+        - podman - manage rootless storage file-context mappings through community.general.sefcontext
+          and report restorecon changes only for actual relabels, avoiding repeated
+          changes on an already configured EL10 host.
+      minor_changes:
+        - Document Nexus candidates, exact-byte validated Galaxy promotion, transition
+          limitations, and per-Collection cutover evidence.
+        - Release preparation and back-sync rely on native central review events instead
+          of dispatching the retired local review workflow.
+        - logrotate - add an operating-system RPM role with validated explicit rules
+          and the existing vendor timer.
+        - logrotate - optionally prepare private existing-account-owned native Podman
+          log files and persistent SELinux labels in the standard component namespace
+          before application startup, preserving existing content and refusing foreign
+          owners, links or unsafe directory metadata.
+        - logrotate - reject protected data/backup paths and document per-file retention
+          and polling limits explicitly.
+        - logrotate - replace the unshipped experimental component-log helper role
+          with the RPM-based role.
+    fragments:
+      - central-collection-review-policy.yml
+      - central-release-review.yml
+      - logrotate-actual-include-position.yml
+      - logrotate-archive-namespace.yml
+      - logrotate-calendar-option-boundary.yml
+      - logrotate-case-sensitive-paths.yml
+      - logrotate-forwarded-archive-count.yml
+      - logrotate-fresh-check-timer.yml
+      - logrotate-hidden-archives-check-mode.yml
+      - logrotate-ignored-source.yml
+      - logrotate-local-archive-protection.yml
+      - logrotate-materialized-wildcard-conflict.yml
+      - logrotate-native-file-preparation.yml
+      - logrotate-path-and-rename-validation.yml
+      - logrotate-probe-umask.yml
+      - logrotate-real-path-conflicts.yml
+      - logrotate-rpm-role.yml
+      - logrotate-scoped-selinux-labels.yml
+      - nexus-candidate-guidance.yml
+      - podman-storage-selinux-idempotence.yml
+      - shared-assets-sync-33596548890.yml
+      - shared-assets-sync-33598491846.yml
+      - shared-assets-sync-33649255083.yml
+      - shared-assets-sync-33662957940.yml
+      - shared-assets-sync-33702830342.yml
+      - shared-assets-sync-33719652134.yml
+      - shared-assets-sync-33724840858.yml
+      - shared-assets-sync-33731631342.yml
+      - shared-assets-sync-33751650589.yml
+      - shared-assets-sync-33758126535.yml
+      - shared-assets-sync-33769633098.yml
+      - shared-assets-sync-33787829675.yml
+      - shared-assets-sync-33795661465.yml
+      - shared-assets-sync-33802454599.yml
+      - shared-assets-sync-33865501767.yml
+      - shared-assets-sync-33893919183.yml
+      - shared-assets-sync-33940619104.yml
+      - shared-assets-sync-33942846336.yml
+      - shared-assets-sync-33944679429.yml
+      - shared-assets-sync-33946613199.yml
+      - shared-assets-sync-33952599308.yml
+      - shared-assets-sync-33959233524.yml
+      - shared-assets-sync-33962198683.yml
+      - shared-assets-sync-33963696264.yml
+      - shared-assets-sync-33965647026.yml
+      - shared-assets-sync-33968153620.yml
+      - shared-assets-sync-33979792609.yml
+      - shared-assets-sync-34542401941.yml
+      - shared-assets-sync-34682319453.yml
+      - shared-assets-sync-34691001501.yml
+      - shared-assets-sync-34691721320.yml
+      - shared-assets-sync-34765679169.yml
+      - shared-assets-sync-34778441533.yml
+      - shared-assets-sync-35166107371.yml
+      - shared-assets-sync-35172487960.yml
+      - shared-assets-sync-36598566307.yml
+      - shared-assets-sync-36752940932.yml
+      - shared-assets-sync.yml
+    release_date: '2026-11-16'

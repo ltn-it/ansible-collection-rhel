@@ -1,3 +1,0 @@
----
-bugfixes:
-  - logrotate - defer timer tasks and restart handlers during fresh-install check mode until the RPM vendor unit exists.

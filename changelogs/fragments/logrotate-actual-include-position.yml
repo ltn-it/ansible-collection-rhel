@@ -1,5 +1,0 @@
----
-bugfixes:
-  - >-
-    logrotate - validate candidates at their actual include position in a private
-    read-only directory view so later global resets cannot hide inherited names.
