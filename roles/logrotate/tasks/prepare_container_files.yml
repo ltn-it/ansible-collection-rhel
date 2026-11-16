@@ -1,0 +1,156 @@
+---
+- name: Require a flat component directory in the standard container log namespace
+  ansible.builtin.assert:
+    that:
+      - item is match('^/var/log/podman-components/[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+[.]log$')
+    quiet: true
+  loop: "{{ logrotate_container_paths }}"
+
+- name: Reject symlinked ancestors before preparing native container log files
+  ansible.builtin.command:
+    argv: >-
+      {{ [ansible_facts.python.executable | default('/usr/bin/python3'), '-c',
+          logrotate_container_symlink_probe] + logrotate_container_paths }}
+  vars:
+    logrotate_container_symlink_probe: >-
+      import pathlib,sys;
+      sys.exit(any(p.is_symlink() for v in sys.argv[1:]
+      for p in (pathlib.Path(v), *pathlib.Path(v).parents)))
+  changed_when: false
+  check_mode: false
+
+- name: Resolve the prepared native log account and group
+  ansible.builtin.getent:
+    database: "{{ item.database }}"
+    key: "{{ item.key }}"
+  loop:
+    - {database: passwd, key: "{{ logrotate_container_user }}"}
+    - {database: group, key: "{{ logrotate_container_group }}"}
+
+- name: Require a non-root runtime account with the selected primary group
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.getent_passwd[logrotate_container_user][1] | int > 0
+      - >-
+        ansible_facts.getent_passwd[logrotate_container_user][2] | int ==
+        ansible_facts.getent_group[logrotate_container_group][1] | int
+    quiet: true
+
+- name: Inspect the standard container log root without following links
+  ansible.builtin.stat:
+    path: /var/log/podman-components
+    follow: false
+  register: logrotate_container_root
+
+- name: Refuse to repurpose a foreign or writable log root
+  ansible.builtin.assert:
+    that:
+      - >-
+        not logrotate_container_root.stat.exists or
+        (logrotate_container_root.stat.isdir | default(false) and
+         not logrotate_container_root.stat.islnk | default(false) and
+         logrotate_container_root.stat.uid == 0 and
+         logrotate_container_root.stat.mode == '0755')
+    quiet: true
+
+- name: Inspect declared native component directories
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop: "{{ logrotate_container_paths | map('dirname') | unique(case_sensitive=true) | list }}"
+  register: logrotate_container_directories
+
+- name: Refuse foreign or non-private existing component directories
+  ansible.builtin.assert:
+    that:
+      - >-
+        not item.stat.exists or
+        (item.stat.isdir | default(false) and not item.stat.islnk | default(false) and
+         item.stat.uid == ansible_facts.getent_passwd[logrotate_container_user][1] | int and
+         item.stat.gid == ansible_facts.getent_group[logrotate_container_group][1] | int and
+         item.stat.mode in ['0700', '0750'])
+    quiet: true
+  loop: "{{ logrotate_container_directories.results }}"
+
+- name: Inspect prepared native files without reading existing log content
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+    get_checksum: false
+    get_mime: false
+  loop: "{{ logrotate_container_paths }}"
+  register: logrotate_container_files
+
+- name: Refuse foreign linked or non-private existing native log files
+  ansible.builtin.assert:
+    that:
+      - >-
+        not item.stat.exists or
+        (item.stat.isreg | default(false) and not item.stat.islnk | default(false) and
+         item.stat.nlink == 1 and
+         item.stat.uid == ansible_facts.getent_passwd[logrotate_container_user][1] | int and
+         item.stat.mode == '0600')
+    quiet: true
+  loop: "{{ logrotate_container_files.results }}"
+
+- name: Create the missing protected standard log root
+  ansible.builtin.file:
+    path: /var/log/podman-components
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: not logrotate_container_root.stat.exists
+
+- name: Create missing private native component directories
+  ansible.builtin.file:
+    path: "{{ item.item }}"
+    state: directory
+    owner: "{{ logrotate_container_user }}"
+    group: "{{ logrotate_container_group }}"
+    mode: '0750'
+  loop: "{{ logrotate_container_directories.results }}"
+  when: not item.stat.exists
+
+- name: Create only missing native log files without replacing existing content
+  ansible.builtin.copy:
+    dest: "{{ item.item }}"
+    content: ''
+    owner: "{{ logrotate_container_user }}"
+    group: "{{ logrotate_container_group }}"
+    mode: '0600'
+    force: false
+  loop: "{{ logrotate_container_files.results }}"
+  when: not item.stat.exists
+
+- name: Label native container log destinations when SELinux is active
+  when:
+    - ansible_facts.selinux is defined
+    - ansible_facts.selinux.status | default('disabled') != 'disabled'
+  block:
+    - name: Install the operating system SELinux management prerequisite
+      ansible.builtin.package:
+        name: policycoreutils-python-utils
+        state: present
+    - name: Check the target Python SELinux management bindings
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_facts.python.executable | default('/usr/bin/python3') }}"
+          - -c
+          - import selinux,seobject
+      changed_when: false
+      check_mode: false
+      register: logrotate_container_selinux_bindings
+      failed_when: logrotate_container_selinux_bindings.rc != 0 and not ansible_check_mode
+    - name: Label only selected native files archives and required directories
+      ansible.builtin.include_tasks: label_container_files.yml
+      when: logrotate_container_selinux_bindings.rc == 0
+    - name: Report deferred label validation when check mode cannot install bindings
+      ansible.builtin.debug:
+        msg: >-
+          SELinux label validation is deferred: the target Python management
+          bindings are unavailable and check mode cannot install prerequisites.
+          Apply the prerequisites before validating labels on this target.
+      when:
+        - ansible_check_mode
+        - logrotate_container_selinux_bindings.rc != 0

@@ -1,0 +1,7 @@
+---
+minor_changes:
+  - >-
+    logrotate - optionally prepare private existing-account-owned native Podman
+    log files and persistent SELinux labels in the standard component namespace
+    before application startup, preserving existing content and refusing foreign
+    owners, links or unsafe directory metadata.

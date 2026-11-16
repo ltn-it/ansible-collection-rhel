@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - >-
+    logrotate - limit SELinux mappings and non-recursive relabeling to selected
+    native log files, their numbered archives and required directories; retire
+    the former role-owned namespace mapping without traversing protected data.

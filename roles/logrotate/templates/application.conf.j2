@@ -1,0 +1,40 @@
+# Managed by lit.rhel.logrotate: {{ logrotate_name }}
+{% for path in logrotate_paths %}
+"{{ path }}"
+{% endfor %}
+{
+    daily
+    maxsize {{ logrotate_max_size }}
+    rotate {{ logrotate_archive_count | int }}
+    maxage {{ logrotate_max_age_days }}
+    minage 0
+    minsize 0
+    start 1
+    compress
+    compresscmd /usr/bin/gzip
+    uncompresscmd /usr/bin/gunzip
+    compressext .gz
+    compressoptions -6
+    nodelaycompress
+    nodateext
+    noolddir
+    nocopy
+    norenamecopy
+    noallowhardlink
+    noshred
+    missingok
+    ifempty
+    su {{ logrotate_user }} {{ logrotate_group }}
+{% if logrotate_copytruncate %}
+    copytruncate
+{% else %}
+    nocopytruncate
+    create {{ logrotate_create_mode }} {{ logrotate_user }} {{ logrotate_group }}
+{% endif %}
+{% if logrotate_postrotate | length > 0 %}
+    sharedscripts
+    postrotate
+{{ logrotate_postrotate | indent(8, true) }}
+    endscript
+{% endif %}
+}

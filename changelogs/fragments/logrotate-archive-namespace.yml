@@ -1,0 +1,11 @@
+---
+bugfixes:
+  - >-
+    logrotate - reject numbered active sources and archive families that collide
+    with selected active paths or protected trees before preparation.
+  - >-
+    logrotate - fix gzip numbering and verify effective archive names with the
+    vendor parser before preparation without changing global configuration.
+  - >-
+    logrotate - tolerate only unrelated existing date-archive collisions during
+    forced debug validation, preserving candidate and parser failure checks.

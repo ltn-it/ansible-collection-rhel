@@ -1,0 +1,6 @@
+---
+bugfixes:
+  - >-
+    logrotate - include dot-prefixed numbered archives in label and hardlink
+    checks, and defer SELinux label validation in check mode when the target
+    Python bindings have not yet been installed; real applies still fail.

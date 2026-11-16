@@ -1,0 +1,5 @@
+---
+bugfixes:
+  - >-
+    logrotate - accept canonical positive archive-count text forwarded through
+    Ansible variables while rejecting fractions, booleans and out-of-range values.

@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - logrotate - pass timer calendars after the command option boundary so option-like
+    values cannot bypass calendar validation before timer configuration is published.

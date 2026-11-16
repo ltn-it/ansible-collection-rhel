@@ -32,6 +32,8 @@ Important inputs:
 When rootless storage management is enabled, the role also prepares
 `/run/user/<uid>` for the configured runtime user. This supports service-style
 Ansible executions where no interactive login created the runtime directory yet.
+SELinux path mappings use `community.general.sefcontext`; `restorecon` preserves
+custom labels and reports a change only when it actually relabels a path.
 
 ## Dependencies
 

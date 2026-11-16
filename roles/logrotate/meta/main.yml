@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  role_name: logrotate
+  namespace: lit
+  author: Lightning IT
+  company: Lightning IT
+  description: Configure RPM logrotate rules and the existing operating system timer.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: ["9"]
+  galaxy_tags: [logging, system]
+dependencies: []

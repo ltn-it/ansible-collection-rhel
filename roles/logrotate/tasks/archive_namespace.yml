@@ -1,0 +1,22 @@
+---
+- name: Require disjoint active archive and protected path namespaces
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_facts.get('python', {}).get('executable', '/usr/bin/python3') }}"
+      - -c
+      - |
+        import json,pathlib,re,sys
+        values=json.load(sys.stdin)
+        sources=values['sources'];protected=values['protected']
+        if any(re.search(r'[.][0-9]+(?:[.]gz)?$',pathlib.PurePosixPath(p).name) for p in sources):
+            raise SystemExit('LOGROTATE_NUMBERED_SOURCE_RESERVED')
+        for source in sources:
+            family=re.compile(re.escape(source)+r'[.][0-9]+(?:[.]gz)?\Z')
+            for other in sources+protected:
+                path=pathlib.PurePosixPath(other)
+                if any(family.fullmatch(str(part)) for part in (path,*path.parents)):
+                    raise SystemExit('LOGROTATE_ARCHIVE_NAMESPACE_COLLISION')
+        print('LOGROTATE_ARCHIVE_NAMESPACES_DISJOINT')
+    stdin: "{{ {'sources': logrotate_paths, 'protected': logrotate_protected_directories} | to_json }}"
+  changed_when: false
+  check_mode: false

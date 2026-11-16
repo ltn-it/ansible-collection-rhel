@@ -1,0 +1,90 @@
+---
+- name: Inspect existing numbered archives without descending into sibling directories
+  ansible.builtin.find:
+    paths: "{{ item | dirname }}"
+    patterns: "{{ (item | basename | regex_escape) ~ '[.][1-9][0-9]*([.]gz)?$' }}"
+    use_regex: true
+    hidden: true
+    recurse: false
+    follow: false
+    file_type: file
+  loop: "{{ logrotate_container_paths }}"
+  register: logrotate_container_archives
+
+- name: Inspect selected archives without following links or reading payloads
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+    get_checksum: false
+    get_mime: false
+  loop: "{{ logrotate_container_archives.results | map(attribute='files') | flatten | map(attribute='path') | list }}"
+  register: logrotate_container_archive_metadata
+
+- name: Refuse to relabel archives linked to other data
+  ansible.builtin.assert:
+    that:
+      - item.stat.isreg | default(false)
+      - not item.stat.islnk | default(false)
+      - item.stat.nlink | default(0) == 1
+    quiet: true
+  loop: "{{ logrotate_container_archive_metadata.results }}"
+
+- name: Inspect the previous role-owned namespace mapping before retiring it
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_facts.python.executable | default('/usr/bin/python3') }}"
+      - -c
+      - |
+        import json,seobject
+        value=seobject.fcontextRecords().get_all().get(('/var/log/podman-components(/.*)?','all files'))
+        print(json.dumps({'present':value is not None,'type':value[2] if value else None}))
+  changed_when: false
+  check_mode: false
+  register: logrotate_container_legacy_mapping
+
+- name: Preserve a foreign mapping at the retired role target
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (logrotate_container_legacy_mapping.stdout | from_json).present or
+        (logrotate_container_legacy_mapping.stdout | from_json).type == 'container_log_t'
+    quiet: true
+
+- name: Declare exact directory labels without a subtree mapping
+  community.general.sefcontext:
+    target: "{{ item | regex_escape }}"
+    ftype: d
+    setype: container_log_t
+    state: present
+  loop: >-
+    {{ (['/var/log/podman-components'] +
+        (logrotate_container_paths | map('dirname') | list)) | unique(case_sensitive=true) | list }}
+
+- name: Declare only selected regular log and numbered archive labels
+  community.general.sefcontext:
+    target: "{{ (item | regex_escape) ~ '([.][1-9][0-9]*([.]gz)?)?' }}"
+    ftype: f
+    setype: container_log_t
+    state: present
+  loop: "{{ logrotate_container_paths }}"
+
+- name: Retire only the previous role-owned namespace type mapping
+  community.general.sefcontext:
+    target: /var/log/podman-components(/.*)?
+    ftype: a
+    setype: container_log_t
+    state: absent
+  when: (logrotate_container_legacy_mapping.stdout | from_json).present
+
+- name: Apply labels to selected paths without recursive traversal
+  ansible.builtin.command:
+    argv: [restorecon, -v, "{{ item }}"]
+  environment:
+    LC_ALL: C
+  loop: >-
+    {{ (['/var/log/podman-components'] +
+        (logrotate_container_paths | map('dirname') | list) + logrotate_container_paths +
+        (logrotate_container_archive_metadata.results | map(attribute='item') | list))
+       | unique(case_sensitive=true) | list }}
+  register: logrotate_container_restorecon
+  changed_when: logrotate_container_restorecon.stdout is search('(?m)^Relabeled ')

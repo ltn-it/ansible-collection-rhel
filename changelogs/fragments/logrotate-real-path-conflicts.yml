@@ -1,0 +1,4 @@
+---
+bugfixes:
+  - logrotate - validate real source paths against existing vendor rules before substituting
+    private archive-layout fixtures.

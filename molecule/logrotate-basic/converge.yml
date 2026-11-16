@@ -1,0 +1,490 @@
+---
+- name: Exercise packaged logrotate input checks and rendering without changing the controller OS
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    # A schema fixture only: this scenario does not install an RPM or run systemd.
+    ansible_facts:
+      os_family: RedHat
+    logrotate_test_root: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/logrotate"
+    logrotate_name: example
+    logrotate_paths: ["{{ logrotate_test_root }}/application.log"]
+    logrotate_protected_directories: ["{{ logrotate_test_root }}/backups"]
+    logrotate_test_role: >-
+      {{ lookup('ansible.builtin.env', 'ANSIBLE_COLLECTIONS_PATH').split(':')[0]
+         }}/ansible_collections/lit/rhel/roles/logrotate
+  tasks:
+    - name: Load packaged role defaults and validate the schema fixture
+      ansible.builtin.include_role:
+        name: lit.rhel.logrotate
+        tasks_from: assert
+        public: true
+
+    - name: Accept a canonical archive count transported as templated text
+      ansible.builtin.include_role:
+        name: lit.rhel.logrotate
+        tasks_from: assert
+      vars:
+        logrotate_archive_count: "7"
+
+    - name: Reject fractional archive counts instead of truncating them
+      block:
+        - name: Validate an intentionally invalid fractional archive count
+          ansible.builtin.include_role:
+            name: lit.rhel.logrotate
+            tasks_from: assert
+          vars:
+            logrotate_archive_count: "7.5"
+        - name: Record unexpected fractional count acceptance
+          ansible.builtin.set_fact:
+            logrotate_test_accepted_fraction: true
+      rescue:
+        - name: Record expected fractional count rejection
+          ansible.builtin.set_fact:
+            logrotate_test_rejected_fraction: true
+
+    - name: Require fail-closed fractional count handling
+      ansible.builtin.assert:
+        that:
+          - logrotate_test_rejected_fraction | default(false)
+          - not logrotate_test_accepted_fraction | default(false)
+
+    - name: Create the private rendering fixture
+      ansible.builtin.file:
+        path: "{{ logrotate_test_root }}"
+        state: directory
+        mode: "0700"
+
+    - name: Render the freshly installed package template
+      ansible.builtin.template:
+        src: "{{ logrotate_test_role }}/templates/application.conf.j2"
+        dest: "{{ logrotate_test_root }}/application.conf"
+        mode: "0600"
+
+    - name: Attempt to include a data backup as a rotation source
+      block:
+        - name: Validate an intentionally forbidden backup path
+          ansible.builtin.include_role:
+            name: lit.rhel.logrotate
+            tasks_from: assert
+          vars:
+            logrotate_paths: ["{{ logrotate_test_root }}/backups/database.sql"]
+
+        - name: Record unexpected acceptance
+          ansible.builtin.set_fact:
+            logrotate_test_accepted_backup: true
+      rescue:
+        - name: Record expected backup exclusion
+          ansible.builtin.set_fact:
+            logrotate_test_rejected_backup: true
+
+    - name: Require actual backup exclusion
+      ansible.builtin.assert:
+        that:
+          - logrotate_test_rejected_backup | default(false)
+          - not logrotate_test_accepted_backup | default(false)
+
+    - name: Prepare an isolated protected-data alias fixture
+      ansible.builtin.file:
+        path: "{{ logrotate_test_root }}/backups"
+        state: directory
+        mode: "0700"
+
+    - name: Create the symbolic alias without touching real backup data
+      ansible.builtin.file:
+        src: "{{ logrotate_test_root }}/backups"
+        dest: "{{ logrotate_test_root }}/alias"
+        state: link
+
+    - name: Reject an aliased source ancestor before rule installation
+      block:
+        - name: Validate an intentionally aliased rotation source
+          ansible.builtin.include_role:
+            name: lit.rhel.logrotate
+            tasks_from: assert
+          vars:
+            logrotate_paths: ["{{ logrotate_test_root }}/alias/database.sql"]
+        - name: Fail if the source alias was accepted
+          ansible.builtin.fail:
+            msg: A source alias was accepted.
+      rescue:
+        - name: Require the intended source-alias rejection
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Reject symbolic-link components in log and protected paths'
+              - ansible_failed_result.rc == 1
+
+    - name: Reject an aliased protected directory before rule installation
+      block:
+        - name: Validate an intentionally aliased protection declaration
+          ansible.builtin.include_role:
+            name: lit.rhel.logrotate
+            tasks_from: assert
+          vars:
+            logrotate_paths: ["{{ logrotate_test_root }}/backups/database.sql"]
+            logrotate_protected_directories: ["{{ logrotate_test_root }}/alias"]
+        - name: Fail if the protection alias was accepted
+          ansible.builtin.fail:
+            msg: A protected-directory alias was accepted.
+      rescue:
+        - name: Require the intended protection-alias rejection
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Reject symbolic-link components in log and protected paths'
+              - ansible_failed_result.rc == 1
+
+    - name: Reject incompatible replacement metadata for prepared container logs
+      block:
+        - name: Validate intentionally incompatible rename settings
+          ansible.builtin.include_role:
+            name: lit.rhel.logrotate
+            tasks_from: assert
+          vars:
+            logrotate_paths: [/var/log/podman-components/example/application.log]
+            logrotate_prepare_container_files: true
+            logrotate_container_user: application
+            logrotate_container_group: application
+        - name: Fail if incompatible rename settings were accepted
+          ansible.builtin.fail:
+            msg: Incompatible rename metadata was accepted.
+      rescue:
+        - name: Require the intended replacement-metadata rejection
+          ansible.builtin.assert:
+            that: >-
+              ansible_failed_task.name ==
+              'Require rename rotation settings compatible with prepared container log files'
+
+    - name: Accept matching runtime-owned replacements for rename rotation
+      ansible.builtin.include_role:
+        name: lit.rhel.logrotate
+        tasks_from: assert
+      vars:
+        logrotate_paths: [/var/log/podman-components/example/application.log]
+        logrotate_prepare_container_files: true
+        logrotate_container_user: application
+        logrotate_container_group: application
+        logrotate_user: application
+        logrotate_group: application
+        logrotate_create_mode: "0600"
+
+    - name: Accept distinct Linux filenames differing only by case
+      ansible.builtin.include_role:
+        name: lit.rhel.logrotate
+        tasks_from: assert
+      vars:
+        logrotate_paths: [/var/log/App.log, /var/log/app.log]
+
+    - name: Reject exact duplicate paths despite case-sensitive filename handling
+      block:
+        - name: Attempt an exact duplicate file path
+          ansible.builtin.include_role:
+            name: lit.rhel.logrotate
+            tasks_from: assert
+          vars:
+            logrotate_paths: [/var/log/App.log, /var/log/App.log]
+        - name: Fail if exact duplicates were accepted
+          ansible.builtin.fail:
+            msg: Exact duplicate paths were accepted.
+      rescue:
+        - name: Require the input uniqueness assertion to reject the duplicates
+          ansible.builtin.assert:
+            that: ansible_failed_task.name == 'Validate the RPM logrotate interface'
+
+    - name: Extract the actual packaged read-only directory inspection task
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -c
+          - |
+            import pathlib,sys,yaml
+            tasks=yaml.safe_load(pathlib.Path(sys.argv[1]).read_text())
+            selected=[task for task in tasks if task['name']=='Inspect declared native component directories']
+            assert len(selected)==1 and 'ansible.builtin.stat' in selected[0]
+            print(yaml.safe_dump(selected,sort_keys=False))
+          - "{{ logrotate_test_role }}/tasks/prepare_container_files.yml"
+      changed_when: false
+      register: logrotate_test_directory_inspection
+
+    - name: Stage only the packaged read-only inspection in the private test directory
+      ansible.builtin.copy:
+        dest: "{{ logrotate_test_root }}/inspect-case-directories.yml"
+        content: "{{ logrotate_test_directory_inspection.stdout }}"
+        mode: "0600"
+
+    - name: Execute the packaged directory loop for both case-distinct components
+      ansible.builtin.include_tasks: "{{ logrotate_test_root }}/inspect-case-directories.yml"
+      vars:
+        logrotate_container_paths:
+          - /var/log/podman-components/App/stdout.log
+          - /var/log/podman-components/app/stderr.log
+
+    - name: Require ownership and permission inspection for both Linux directories
+      ansible.builtin.assert:
+        that:
+          - logrotate_container_directories.results | length == 2
+          - >-
+            logrotate_container_directories.results | map(attribute='item') | sort | list ==
+            ['/var/log/podman-components/App', '/var/log/podman-components/app']
+
+    - name: Prepare an archive selection fixture with a protected child
+      ansible.builtin.file:
+        path: "{{ logrotate_test_root }}/archive-scope/backups"
+        state: directory
+        mode: "0700"
+
+    - name: Create selected and unrelated archive fixture files
+      ansible.builtin.copy:
+        dest: "{{ logrotate_test_root }}/archive-scope/{{ item }}"
+        content: "PRESERVE_ARCHIVE_SCOPE\n"
+        mode: "0600"
+      loop:
+        - application.log
+        - application.log.1.gz
+        - .application.log
+        - .application.log.1.gz
+        - unrelated.log.1.gz
+        - backups/application.log.1.gz
+
+    - name: Extract actual packaged archive inspection tasks without SELinux mutation
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -c
+          - |
+            import pathlib,sys,yaml
+            tasks=yaml.safe_load(pathlib.Path(sys.argv[1]).read_text())
+            assert [next(iter(t['ansible.builtin.command']['argv'])) for t in tasks
+                    if t['name']=='Apply labels to selected paths without recursive traversal']==['restorecon']
+            relabel=next(t for t in tasks if t['name']=='Apply labels to selected paths without recursive traversal')
+            assert relabel['ansible.builtin.command']['argv']==['restorecon','-v','{'*2+' item '+'}'*2]
+            print(yaml.safe_dump(tasks[:3],sort_keys=False))
+          - "{{ logrotate_test_role }}/tasks/label_container_files.yml"
+      changed_when: false
+      register: logrotate_test_archive_inspection
+
+    - name: Stage the actual packaged archive inspection tasks
+      ansible.builtin.copy:
+        dest: "{{ logrotate_test_root }}/inspect-archives.yml"
+        content: "{{ logrotate_test_archive_inspection.stdout }}"
+        mode: "0600"
+
+    - name: Inspect ordinary and hidden selected numbered archive families
+      ansible.builtin.include_tasks: "{{ logrotate_test_root }}/inspect-archives.yml"
+      vars:
+        logrotate_container_paths:
+          - "{{ logrotate_test_root }}/archive-scope/application.log"
+          - "{{ logrotate_test_root }}/archive-scope/.application.log"
+
+    - name: Require protected and unrelated payloads to be excluded
+      ansible.builtin.assert:
+        that:
+          - logrotate_container_archive_metadata.results | length == 2
+          - >-
+            logrotate_container_archive_metadata.results | map(attribute='item') | sort | list ==
+            [logrotate_test_root ~ '/archive-scope/.application.log.1.gz',
+             logrotate_test_root ~ '/archive-scope/application.log.1.gz']
+
+    - name: Create an isolated linked archive family
+      ansible.builtin.file:
+        path: "{{ logrotate_test_root }}/linked-family"
+        state: directory
+        mode: "0700"
+
+    - name: Create an archive-shaped hardlink to the protected payload
+      ansible.builtin.file:
+        src: "{{ logrotate_test_root }}/archive-scope/backups/application.log.1.gz"
+        dest: "{{ logrotate_test_root }}/linked-family/application.log.1.gz"
+        state: hard
+        mode: "0600"
+
+    - name: Reject an archive linked to protected data
+      block:
+        - name: Run actual archive inspection with the hardlink present
+          ansible.builtin.include_tasks: "{{ logrotate_test_root }}/inspect-archives.yml"
+          vars:
+            logrotate_container_paths: ["{{ logrotate_test_root }}/linked-family/application.log"]
+        - name: Fail if a protected hardlink was accepted
+          ansible.builtin.fail:
+            msg: Protected data hardlink was accepted for relabeling.
+      rescue:
+        - name: Require the archive link guard to reject the fixture
+          ansible.builtin.assert:
+            that: ansible_failed_task.name == 'Refuse to relabel archives linked to other data'
+
+    - name: Create a hidden archive hardlink to the protected payload
+      ansible.builtin.file:
+        src: "{{ logrotate_test_root }}/archive-scope/backups/application.log.1.gz"
+        dest: "{{ logrotate_test_root }}/linked-family/.application.log.1.gz"
+        state: hard
+        mode: "0600"
+
+    - name: Exercise actual SELinux prerequisite checks with unavailable target bindings
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -c
+          - |
+            import os,pathlib,subprocess,sys,tempfile,yaml
+            source=pathlib.Path(sys.argv[1])
+            tasks=yaml.safe_load(source.read_text())
+            block=next(t['block'] for t in tasks if t['name']==
+                       'Label native container log destinations when SELinux is active')
+            assert len(block)==4
+            with tempfile.TemporaryDirectory(prefix='bindings-',dir=sys.argv[2]) as directory:
+                root=pathlib.Path(directory)
+                subprocess.run([sys.executable,'-m','venv','--without-pip',str(root/'python')],check=True)
+                python=str(root/'python/bin/python')
+                missing=subprocess.run([python,'-c','import selinux,seobject'],capture_output=True)
+                assert missing.returncode!=0 and b'ModuleNotFoundError' in missing.stderr
+                play=[dict(name='Probe missing target prerequisites',hosts='localhost',
+                           connection='local',gather_facts=False,
+                           vars=dict(ansible_python_interpreter=sys.executable,
+                                     ansible_facts=dict(python=dict(executable=python))),
+                           tasks=block[1:])]
+                path=root/'probe.yml'
+                path.write_text(yaml.safe_dump(play,sort_keys=False))
+                environment=dict(os.environ,ANSIBLE_STDOUT_CALLBACK='default',ANSIBLE_NOCOLOR='1')
+                command=['ansible-playbook','-i','localhost,',str(path)]
+                checked=subprocess.run(command+['--check'],capture_output=True,text=True,env=environment)
+                assert checked.returncode==0,checked.stdout+checked.stderr
+                assert 'SELinux label validation is deferred' in checked.stdout
+                assert 'skipping: [localhost]' in checked.stdout
+                applied=subprocess.run(command,capture_output=True,text=True,env=environment)
+                assert applied.returncode!=0,applied.stdout+applied.stderr
+                assert 'ModuleNotFoundError' in applied.stdout+applied.stderr,applied.stdout+applied.stderr
+                assert 'SELinux label validation is deferred' not in applied.stdout+applied.stderr
+            print('CHECK_MODE_DEFERRED True REAL_APPLY_REJECTED True')
+          - "{{ logrotate_test_role }}/tasks/prepare_container_files.yml"
+          - "{{ logrotate_test_root }}"
+      changed_when: false
+
+    - name: Reject a hidden archive linked to protected data
+      block:
+        - name: Inspect the hidden archive through actual packaged tasks
+          ansible.builtin.include_tasks: "{{ logrotate_test_root }}/inspect-archives.yml"
+          vars:
+            logrotate_container_paths: ["{{ logrotate_test_root }}/linked-family/.application.log"]
+        - name: Fail if a protected hidden hardlink was accepted
+          ansible.builtin.fail:
+            msg: Hidden archive hardlink was accepted for relabeling.
+      rescue:
+        - name: Require the hidden archive link guard to reject the fixture
+          ansible.builtin.assert:
+            that: ansible_failed_task.name == 'Refuse to relabel archives linked to other data'
+
+    - name: Extract actual packaged active-source inspection without changing the OS
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -c
+          - |
+            import pathlib,sys,yaml
+            tasks=yaml.safe_load(pathlib.Path(sys.argv[1]).read_text())
+            names=['Inspect explicitly selected existing log files',
+                   'Refuse existing symlinks and non-regular rotation sources']
+            selected=[task for task in tasks if task['name'] in names]
+            assert len(selected)==2
+            print(yaml.safe_dump(selected,sort_keys=False))
+          - "{{ logrotate_test_role }}/tasks/main.yml"
+      changed_when: false
+      register: logrotate_test_active_inspection
+
+    - name: Stage only the packaged active-source inspection tasks
+      ansible.builtin.copy:
+        dest: "{{ logrotate_test_root }}/inspect-active.yml"
+        content: "{{ logrotate_test_active_inspection.stdout }}"
+        mode: "0600"
+
+    - name: Prepare a hardlinked active log alias to the protected payload
+      ansible.builtin.file:
+        src: "{{ logrotate_test_root }}/archive-scope/backups/application.log.1.gz"
+        dest: "{{ logrotate_test_root }}/linked-family/active.log"
+        state: hard
+        mode: "0600"
+
+    - name: Reject an existing hardlinked active source before rule installation
+      block:
+        - name: Run the packaged active-file inspection on the linked alias
+          ansible.builtin.include_tasks: "{{ logrotate_test_root }}/inspect-active.yml"
+          vars:
+            logrotate_paths: ["{{ logrotate_test_root }}/linked-family/active.log"]
+        - name: Fail if a hardlinked active source was accepted
+          ansible.builtin.fail:
+            msg: A hardlinked active rotation source was accepted.
+      rescue:
+        - name: Require the active-source guard to reject the hardlink
+          ansible.builtin.assert:
+            that: ansible_failed_task.name == 'Refuse existing symlinks and non-regular rotation sources'
+
+    - name: Prove a fresh-install check run defers timer tasks and notified handlers
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -c
+          - |
+            import os,pathlib,subprocess,sys,tempfile,yaml
+            role=pathlib.Path(sys.argv[1])
+            tasks=yaml.safe_load((role/'tasks/main.yml').read_text())
+            names=['Report deferred timer reconciliation on a fresh-install dry run',
+                   'Apply a changed vendor timer override before reconciling activation',
+                   'Reconcile vendor logrotate timer activation']
+            selected=[task for task in tasks if task['name'] in names]
+            assert len(selected)==3
+            handlers=yaml.safe_load((role/'handlers/main.yml').read_text())
+            assert len(handlers)==1
+            environment=dict(os.environ,ANSIBLE_STDOUT_CALLBACK='default',ANSIBLE_NOCOLOR='1')
+            with tempfile.TemporaryDirectory(dir=sys.argv[2]) as temporary:
+                path=pathlib.Path(temporary)/'fresh-check.yml'
+                for enabled in [True,False]:
+                    values=dict(logrotate_vendor_timer=dict(stat=dict(exists=False)),logrotate_timer_enabled=enabled)
+                    notify=dict(name='Predict an override change',debug=dict(msg='check fixture'),
+                                changed_when=True,notify='Reload logrotate timer')
+                    play=[dict(name='Check timer before its RPM unit exists',hosts='localhost',connection='local',
+                               gather_facts=False,vars=values,tasks=[notify]+selected,handlers=handlers)]
+                    path.write_text(yaml.safe_dump(play,sort_keys=False))
+                    result=subprocess.run(['ansible-playbook','-i','localhost,','--check',str(path)],
+                                          env=environment,capture_output=True,text=True,timeout=90)
+                    assert result.returncode==0,result.stdout+result.stderr
+                    assert 'Vendor timer activation is deferred in check mode' in result.stdout,result.stdout
+                    assert 'RUNNING HANDLER [Reload logrotate timer]' in result.stdout,result.stdout
+                    assert 'skipped=2' in result.stdout,result.stdout
+            print('FRESH_CHECK_TIMER_AND_HANDLER_DEFERRED True BOTH_ACTIVATION_VALUES True')
+          - "{{ logrotate_test_role }}"
+          - "{{ logrotate_test_root }}"
+      changed_when: false
+
+    - name: Extract the actual packaged archive namespace guard
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -c
+          - |
+            import json,os,pathlib,subprocess,sys,tempfile,yaml
+            role=pathlib.Path(sys.argv[1]);root=pathlib.Path(sys.argv[2])
+            tasks=yaml.safe_load((role/'tasks/archive_namespace.yml').read_text())
+            cases=[
+                (['/tmp/app.log','/tmp/app.log.1'],[],False),
+                (['/tmp/app.log.1.gz'],[],False),
+                (['/tmp/app.log','/tmp/app.log.1/child.log'],[],False),
+                (['/tmp/app.log'],['/tmp/app.log.1'],False),
+                (['/tmp/app.log'],['/tmp/app.log.1.gz/private'],False),
+                (['/tmp/App.log','/tmp/app.log'],['/tmp/data'],True),
+            ]
+            environment=dict(os.environ,ANSIBLE_STDOUT_CALLBACK='default',ANSIBLE_NOCOLOR='1')
+            with tempfile.TemporaryDirectory(dir=root) as temporary:
+                play=pathlib.Path(temporary)/'namespace.yml'
+                for sources,protected,accepted in cases:
+                    variables=dict(logrotate_paths=sources,logrotate_protected_directories=protected)
+                    variables['ansible_facts']={'python':{'executable':sys.executable}}
+                    play.write_text(yaml.safe_dump([dict(hosts='localhost',connection='local',
+                        gather_facts=False,vars=variables,tasks=tasks)],sort_keys=False))
+                    result=subprocess.run(['ansible-playbook','-i','localhost,',str(play)],
+                        env=environment,capture_output=True,text=True,timeout=90)
+                    assert (result.returncode==0)==accepted,result.stdout+result.stderr
+                    if not accepted:
+                        assert 'LOGROTATE_' in result.stdout+result.stderr,result.stdout+result.stderr
+            print('NUMBERED_ACTIVE_AND_PROTECTED_ARCHIVE_COLLISIONS_REJECTED True CASE_DISTINCT_ALLOWED True')
+          - "{{ logrotate_test_role }}"
+          - "{{ logrotate_test_root }}"
+      changed_when: false
