@@ -1,0 +1,20 @@
+---
+logrotate_name: ""
+logrotate_paths: []
+logrotate_protected_directories: []
+logrotate_user: root
+logrotate_group: "{{ logrotate_user }}"
+logrotate_create_mode: "0640"
+logrotate_archive_count: 7
+logrotate_max_age_days: 14
+logrotate_max_size: 100M
+logrotate_copytruncate: false
+logrotate_postrotate: ""
+# Empty preserves the vendor calendar. This is a check interval, not a size cap.
+logrotate_timer_calendar: ""
+logrotate_timer_enabled: true
+# Optional setup preparation for the standard native Podman log namespace.
+# This creates no service and does not capture logs.
+logrotate_prepare_container_files: false
+logrotate_container_user: ""
+logrotate_container_group: ""

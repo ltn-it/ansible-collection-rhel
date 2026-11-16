@@ -53,6 +53,9 @@ nightly, prod).
 
 Planned and initial roles include:
 
+- `lit.rhel.logrotate`
+  Configure the operating system RPM, explicit application rules and existing
+  vendor timer. See [its retention and writer limits](roles/logrotate/README.md).
 - `lit.rhel.selinux`  
   Manage SELinux policy and mode (enforcing/permissive/disabled) in an
   idempotent way, using `ansible.posix.selinux`.

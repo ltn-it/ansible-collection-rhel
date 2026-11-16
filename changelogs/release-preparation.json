@@ -1,0 +1,12 @@
+{
+  "base_sha": "69905d943dcb96180a26d30824328c94181e9bfa",
+  "next_version": "1.24.0",
+  "preparer": {
+    "login": "lightning-it-release-automation[bot]"
+  },
+  "repository": "ltn-it/ansible-collection-rhel",
+  "schema_version": 1,
+  "workflow": {
+    "source_sha": "69905d943dcb96180a26d30824328c94181e9bfa"
+  }
+}

@@ -1,0 +1,176 @@
+---
+- name: Inspect the RPM validator and private namespace tools after package reconciliation
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    get_checksum: false
+    get_mime: false
+  loop: [/usr/sbin/logrotate, /usr/bin/unshare, /usr/bin/mount]
+  register: logrotate_layout_binaries
+
+- name: Record actual validator prerequisite availability
+  ansible.builtin.set_fact:
+    logrotate_layout_ready: >-
+      {{ logrotate_layout_binaries.results | map(attribute='stat.exists') | list | min | bool }}
+
+- name: Require the RPM validator for real application
+  ansible.builtin.assert:
+    that: ansible_check_mode or logrotate_layout_ready | bool
+    fail_msg: The logrotate and util-linux RPMs must provide the validator and namespace tools before preparation.
+    quiet: true
+
+- name: Report deferred effective archive layout on a fresh-install dry run
+  ansible.builtin.debug:
+    msg: >-
+      Effective vendor archive layout validation is deferred in check mode until
+      the real logrotate and util-linux RPMs are installed. Selected namespaces are still checked.
+  when:
+    - ansible_check_mode
+    - not logrotate_layout_ready | bool
+
+- name: Probe effective archive names with the actual RPM parser without rotating logs
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_facts.get('python', {}).get('executable', '/usr/bin/python3') }}"
+      - -c
+      - |
+        import grp,json,os,pathlib,pwd,re,shutil,stat,subprocess,sys,tempfile
+        values=json.load(sys.stdin)
+        result={'ok':False,'reason':'probe_failed'}
+        try:
+            if os.geteuid()!=0:
+                raise PermissionError('root_required')
+            uid=pwd.getpwnam(values['user']).pw_uid
+            gid=grp.getgrnam(values['group']).gr_gid
+            if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,100}',values['name']):
+                raise ValueError('rule_name')
+            original=pathlib.Path(sys.argv[2])
+            if original.is_symlink() or not original.is_dir():
+                raise ValueError('rule_directory')
+            with tempfile.TemporaryDirectory(prefix='lit-logrotate-layout-') as directory:
+                base=pathlib.Path(directory);os.chmod(base,0o711)
+                metadata=[];total=0;device=original.stat().st_dev
+                for folder,dirs,files in os.walk(original,followlinks=False):
+                    paths=[pathlib.Path(folder)]+[pathlib.Path(folder)/name for name in files]
+                    paths += [pathlib.Path(folder)/name for name in dirs
+                              if (pathlib.Path(folder)/name).is_symlink()]
+                    for source in paths:
+                        info=source.lstat();relative=source.relative_to(original)
+                        if (info.st_dev!=device or len(relative.parts)>8 or len(metadata)>=1024
+                                or not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)
+                                        or stat.S_ISLNK(info.st_mode))):
+                            raise ValueError('unsupported_rule_snapshot')
+                        if stat.S_ISREG(info.st_mode):
+                            total+=info.st_size
+                            if info.st_nlink!=1 or total>8388608:
+                                raise ValueError('unsupported_rule_snapshot')
+                        metadata.append((relative,info.st_uid,info.st_gid))
+                shadow=base/'rules';shutil.copytree(original,shadow,symlinks=True)
+                for relative,owner,group in metadata:
+                    os.chown(shadow/relative,owner,group,follow_symlinks=False)
+                logs=base/'logs';logs.mkdir(mode=0o711);logs.chmod(0o711)
+                probes=[];configuration=values['configuration']
+                for index,source in enumerate(values['sources']):
+                    parent=logs/str(index);parent.mkdir(mode=0o700);os.chown(parent,uid,gid)
+                    path=parent/pathlib.PurePosixPath(source).name
+                    fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+                    try:
+                        os.write(fd,b'private archive layout probe\n');os.fchown(fd,uid,gid)
+                    finally:
+                        os.close(fd)
+                    quoted='"'+source+'"'
+                    if quoted not in configuration:
+                        raise ValueError('rendered_source_missing')
+                    configuration=configuration.replace(quoted,'"'+str(path)+'"')
+                    probes.append(str(path))
+                config=shadow/values['name']
+                if config.is_symlink() or config.is_file():
+                    config.unlink()
+                fd=os.open(config,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+                with os.fdopen(fd,'w') as stream:
+                    stream.write(configuration)
+                # Bind only inside the child namespace: the real global file sees
+                # the candidate at its installed name and include position.
+                script=('set -eu; /usr/bin/mount --bind "$1" "$2"; '
+                        '/usr/bin/mount -o remount,bind,ro "$2"; '
+                        'exec /usr/sbin/logrotate --debug --force --state "$4" "$3"')
+                command=['/usr/bin/unshare','--mount','--propagation','private','/bin/sh','-c',
+                         script,'lit-logrotate-probe',str(shadow),str(original),sys.argv[1],str(base/'state')]
+                # Preserve real path identities for the vendor's cross-rule
+                # duplicate check before replacing them with layout fixtures.
+                config.write_text(values['configuration'])
+                validation_command=list(command)
+                validation_command[6]=script.replace('--debug --force','--debug')
+                validation=subprocess.run(validation_command,cwd='/',env=dict(os.environ,LC_ALL='C'),
+                                          capture_output=True,text=True,timeout=60)
+                validation_errors=[line for line in validation.stderr.splitlines() if line.startswith('error:')]
+                validation_ignored=any(line.endswith('ignore duplicate log entry for '+source)
+                    for line in (validation.stdout+'\n'+validation.stderr).splitlines()
+                    for source in values['sources'])
+                validation_collisions=[line for line in validation_errors if re.fullmatch(
+                    r'error: destination (.+) already exists, skipping rotation',line)]
+                validation_ok=not validation_ignored and (validation.returncode==0 or (validation.returncode==1 and
+                    bool(validation_errors) and len(validation_collisions)==len(validation_errors)))
+                config.write_text(configuration)
+                call=(subprocess.run(command,cwd='/',env=dict(os.environ,LC_ALL='C'),
+                                     capture_output=True,text=True,timeout=60) if validation_ok else validation)
+                errors=[line for line in call.stderr.splitlines() if line.startswith('error:')]
+                collisions=[]
+                for line in errors:
+                    match=re.fullmatch(r'error: destination (.+) already exists, skipping rotation',line)
+                    if match and not match[1].startswith(str(base)+'/'):
+                        collisions.append(line)
+                # A forced debug pass also visits unrelated vendor stanzas. A
+                # date archive created earlier today is no candidate parse error.
+                benign=call.returncode==1 and bool(errors) and len(collisions)==len(errors)
+                if validation_ignored:
+                    result={'ok':False,'reason':'selected_source_ignored'}
+                elif not validation_ok:
+                    result={'ok':False,'reason':'vendor_configuration_failed','rc':validation.returncode}
+                elif call.returncode and not benign:
+                    result={'ok':False,'reason':'vendor_debug_failed','rc':call.returncode}
+                else:
+                    observed=set(re.findall(re.escape(str(logs))+r'/[^\s"\x27]+',call.stdout+call.stderr))
+                    observed={value.rstrip(':,);') for value in observed}
+                    archives=[0]*len(probes)
+                    invalid=False
+                    for value in observed:
+                        matched=False
+                        for index,path in enumerate(probes):
+                            if value==path:
+                                matched=True;break
+                            if re.fullmatch(re.escape(path)+r'[.][0-9]+(?:[.]gz)?',value):
+                                archives[index]+=1;matched=True;break
+                        if not matched:
+                            invalid=True
+                    valid=not invalid and all(count>0 for count in archives)
+                    result={'ok':valid,'reason':'verified' if valid else 'incompatible_archive_names',
+                            'sources':len(probes),'archive_paths':sum(archives),
+                            'unrelated_existing_date_archives':len(collisions)}
+        except Exception as error:
+            result={'ok':False,'reason':'probe_failed','error':type(error).__name__}
+        print(json.dumps(result,sort_keys=True))
+      - /etc/logrotate.conf
+      - /etc/logrotate.d
+    stdin: >-
+      {{ {'name': logrotate_name, 'sources': logrotate_paths, 'user': logrotate_user, 'group': logrotate_group,
+          'configuration': lookup('ansible.builtin.template', 'application.conf.j2')} | to_json }}
+  changed_when: false
+  check_mode: false
+  no_log: true
+  register: logrotate_layout_probe
+  when: logrotate_layout_ready | bool
+
+- name: Require the effective vendor archive layout to match discovery and protection
+  ansible.builtin.assert:
+    that:
+      - logrotate_layout_probe.rc == 0
+      - (logrotate_layout_probe.stdout | from_json).ok | bool
+    fail_msg: >-
+      The vendor configuration does not provide a verified numbered gzip archive
+      layout. Inspect overlapping or ignored sources, global extension/addextension settings or vendor config errors;
+      keep incompatible naming inside other individual stanzas before retrying.
+      The host must permit root to create a private mount namespace for this read-only probe.
+      No candidate rule or timer change has been installed. If native file preparation
+      already ran, its selected empty files and labels can remain for inspection.
+    quiet: true
+  when: logrotate_layout_ready | bool
